@@ -24,6 +24,8 @@ MODULES = [
 _MODULE_LOADER = {
     'outline':      ('modules.outline',      'OutlineModule'),
     'encyclopedia': ('modules.encyclopedia', 'EncyclopediaModule'),
+    'problems':     ('modules.problems',     'ProblemsModule'),
+    'templates':    ('modules.templates',    'TemplatesModule'),
 }
 
 
