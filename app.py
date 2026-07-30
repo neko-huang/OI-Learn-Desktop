@@ -205,6 +205,12 @@ class App(tk.Tk):
         if module_id not in self.module_frames:
             return
 
+        # 通知当前模块即将离开（自动保存等）
+        if self.current_module and self.current_module in self._loaded_modules:
+            module = self._loaded_modules[self.current_module]
+            if hasattr(module, 'on_before_leave'):
+                module.on_before_leave()
+
         # 懒加载：首次切换时初始化模块
         if module_id not in self._loaded_modules:
             self._load_module(module_id)
@@ -490,6 +496,10 @@ class App(tk.Tk):
             self.status_label.config(text='')
 
     def _on_close(self):
+        # 通知当前模块（自动保存等）
+        for module in self._loaded_modules.values():
+            if hasattr(module, 'on_before_leave'):
+                module.on_before_leave()
         self.config.set('window_width', self.winfo_width())
         self.config.set('window_height', self.winfo_height())
         self.config.set('window_x', self.winfo_x())
