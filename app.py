@@ -34,11 +34,12 @@ class App(tk.Tk):
 
         # 初始化数据库
         initialize_database()
-        seed_database()
+        seed_msg = seed_database()
 
         self.protocol('WM_DELETE_WINDOW', self._on_close)
         self.current_module = None
 
+        # ... 构建 UI ...
         self._setup_style()
         self._build_nav_bar()
         self._build_content_area()
@@ -46,6 +47,10 @@ class App(tk.Tk):
         self.apply_theme()
         self._bind_shortcuts()
         self.switch_module('outline')
+
+        # 显示种子数据导入状态
+        if seed_msg:
+            self.after(500, lambda: self.set_status(seed_msg))
 
         self.lift()
         self.focus_force()

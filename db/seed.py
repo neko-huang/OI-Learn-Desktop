@@ -554,10 +554,14 @@ struct BIT {
 # 种子数据导入函数
 # ============================================================
 
-def seed_database():
-    """将种子数据导入数据库（仅当表为空时执行）"""
+def seed_database() -> str:
+    """
+    将种子数据导入数据库（仅当表为空时执行）
+    返回状态消息，供 GUI 状态栏显示
+    """
     conn = get_connection()
     cursor = conn.cursor()
+    messages = []
 
     # --- 导入模板（仅首次） ---
     cursor.execute("SELECT COUNT(*) FROM templates")
@@ -570,9 +574,10 @@ def seed_database():
                  tmpl['code'], tmpl['note'])
             )
         conn.commit()
-        print(f"[种子] 已导入 {len(SEED_TEMPLATES)} 个算法模板")
+        messages.append(f'已导入 {len(SEED_TEMPLATES)} 个算法模板')
 
     conn.close()
+    return '；'.join(messages) if messages else ''
 
 
 # ============================================================
