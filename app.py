@@ -20,6 +20,12 @@ MODULES = [
     {'id': 'stats',        'name': '统计',   'shortcut': 'Ctrl+7'},
 ]
 
+# 模块懒加载注册表：模块ID → (导入路径, 类名)
+_MODULE_LOADER = {
+    'outline':      ('modules.outline',      'OutlineModule'),
+    # 其他模块待实现时添加
+}
+
 
 class App(tk.Tk):
     """主应用窗口"""
@@ -38,6 +44,9 @@ class App(tk.Tk):
 
         self.protocol('WM_DELETE_WINDOW', self._on_close)
         self.current_module = None
+
+        # 已加载的模块实例（懒加载）
+        self._loaded_modules = {}
 
         # ... 构建 UI ...
         self._setup_style()
@@ -190,9 +199,13 @@ class App(tk.Tk):
     # ============================================================
 
     def switch_module(self, module_id: str):
-        """切换到指定模块 —— 纯 Frame 切换，无冗余标签栏"""
+        """切换到指定模块，首次访问时懒加载"""
         if module_id not in self.module_frames:
             return
+
+        # 懒加载：首次切换时初始化模块
+        if module_id not in self._loaded_modules:
+            self._load_module(module_id)
 
         # 隐藏当前模块
         if self.current_module and self.current_module in self.module_frames:
@@ -206,6 +219,29 @@ class App(tk.Tk):
 
         self.current_module = module_id
         self.set_status(f'已切换到「{self._module_name(module_id)}」')
+
+    def _load_module(self, module_id: str):
+        """懒加载模块类并实例化"""
+        loader_info = _MODULE_LOADER.get(module_id)
+        if not loader_info:
+            self.set_status(f'模块「{self._module_name(module_id)}」尚未实现')
+            return
+
+        import_path, class_name = loader_info
+        try:
+            mod = __import__(import_path, fromlist=[class_name])
+            cls = getattr(mod, class_name)
+            # 清除占位内容
+            frame = self.module_frames[module_id]
+            for w in frame.winfo_children():
+                w.destroy()
+            # 实例化模块
+            instance = cls(self, frame)
+            self._loaded_modules[module_id] = instance
+        except Exception as e:
+            self.set_status(f'加载模块失败: {e}')
+            import traceback
+            traceback.print_exc()
 
     def _update_nav_style(self, active_id: str):
         """更新导航按钮样式：选中=高亮，未选中=常规"""
@@ -279,6 +315,11 @@ class App(tk.Tk):
         self.status_label.configure(bg=colors['bg_sidebar'], fg=colors['fg_muted'])
         self.shortcut_hint.configure(bg=colors['bg_sidebar'], fg=colors['fg_muted'])
 
+        # 已加载模块的主题更新
+        for module_instance in self._loaded_modules.values():
+            if hasattr(module_instance, 'apply_theme'):
+                module_instance.apply_theme()
+
     # ============================================================
     # 快捷键
     # ============================================================
@@ -300,16 +341,29 @@ class App(tk.Tk):
         self.bind('<Control-comma>', self._on_settings)
 
     def _on_new(self, event=None):
-        self.set_status(f'[Ctrl+N] 新建 —「{self._module_name(self.current_module)}」待实现')
+        self._delegate_to_module('on_new') or \
+            self.set_status(f'[Ctrl+N] 新建 —「{self._module_name(self.current_module)}」待实现')
 
     def _on_save(self, event=None):
-        self.set_status(f'[Ctrl+S] 保存 —「{self._module_name(self.current_module)}」待实现')
+        self._delegate_to_module('on_save') or \
+            self.set_status(f'[Ctrl+S] 保存 —「{self._module_name(self.current_module)}」待实现')
 
     def _on_search(self, event=None):
-        self.set_status(f'[Ctrl+F] 搜索 —「{self._module_name(self.current_module)}」待实现')
+        self._delegate_to_module('on_search') or \
+            self.set_status(f'[Ctrl+F] 搜索 —「{self._module_name(self.current_module)}」待实现')
 
     def _on_export(self, event=None):
-        self.set_status(f'[Ctrl+E] 导出 —「{self._module_name(self.current_module)}」待实现')
+        self._delegate_to_module('on_export') or \
+            self.set_status(f'[Ctrl+E] 导出 —「{self._module_name(self.current_module)}」待实现')
+
+    def _delegate_to_module(self, method_name: str) -> bool:
+        """将事件委托给当前模块的对应方法，返回 True 表示已处理"""
+        if self.current_module and self.current_module in self._loaded_modules:
+            module = self._loaded_modules[self.current_module]
+            if hasattr(module, method_name):
+                getattr(module, method_name)()
+                return True
+        return False
 
     def _on_settings(self, event=None):
         """打开设置对话框"""
