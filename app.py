@@ -6,6 +6,8 @@
 import tkinter as tk
 from tkinter import ttk
 from config import Config
+from db.database import initialize_database
+from db.seed import seed_database
 
 
 MODULES = [
@@ -29,6 +31,10 @@ class App(tk.Tk):
         self.title('InfoLearn — 信息学学习助手')
         self.geometry(self._geometry_string())
         self.minsize(900, 600)
+
+        # 初始化数据库
+        initialize_database()
+        seed_database()
 
         self.protocol('WM_DELETE_WINDOW', self._on_close)
         self.current_module = None
