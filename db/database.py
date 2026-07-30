@@ -69,8 +69,9 @@ def initialize_database():
             title           TEXT    NOT NULL,          -- 题目名称
             platform        TEXT    NOT NULL DEFAULT '', -- OJ来源：CF/Luogu/AtCoder/Other
             platform_id     TEXT    DEFAULT '',        -- OJ 题目ID，如 CF 1500A
-            difficulty      TEXT    DEFAULT '',        -- 难度等级：入门/普及-/普及/提高+/...
+            difficulty      TEXT    DEFAULT '',        -- 难度等级
             tags            TEXT    DEFAULT '',        -- JSON 数组：算法标签
+            description     TEXT    DEFAULT '',        -- 题意描述（Markdown）
             status          TEXT    NOT NULL DEFAULT 'todo',  -- todo/done/review
             solution        TEXT    DEFAULT '',        -- 题解 Markdown
             mistake_note    TEXT    DEFAULT '',        -- 易错记录 Markdown
@@ -164,6 +165,19 @@ def migrate():
     数据库迁移入口（未来新增表/改结构时在此添加）
     """
     initialize_database()
+
+    # v1.1: 添加 description 字段
+    conn = get_connection()
+    try:
+        conn.execute("ALTER TABLE problems ADD COLUMN description TEXT DEFAULT ''")
+        conn.commit()
+        print("[迁移] 已添加 problems.description 字段")
+    except Exception:
+        pass  # 字段已存在，忽略
+    conn.close()
+
+    # 自动初始化时也执行迁移
+    _run_migrations = True
 
 
 # ============================================================

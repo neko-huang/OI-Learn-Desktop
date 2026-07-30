@@ -6,7 +6,7 @@
 import tkinter as tk
 from tkinter import ttk
 from config import Config
-from db.database import initialize_database
+from db.database import initialize_database, migrate
 from db.seed import seed_database
 
 
@@ -42,6 +42,7 @@ class App(tk.Tk):
 
         # 初始化数据库
         initialize_database()
+        migrate()
         seed_msg = seed_database()
 
         self.protocol('WM_DELETE_WINDOW', self._on_close)
