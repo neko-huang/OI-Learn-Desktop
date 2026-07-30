@@ -141,12 +141,11 @@ class OutlineModule:
 
         for cat in self.categories:
             cat_node = self.tree.insert('', tk.END, text=cat['name'],
-                                         values=('cat',), tags=('category',),
+                                         tags=('category',),
                                          iid=cat['id'], open=False)
             for topic in cat['topics']:
                 topic_node = self.tree.insert(cat_node, tk.END,
-                                               text=f"  {topic['name']}",
-                                               values=('topic',),
+                                               text=topic['name'],
                                                tags=('topic',),
                                                iid=topic['id'], open=False)
                 for sub in topic['subtopics']:
@@ -154,7 +153,7 @@ class OutlineModule:
                     status = self._progress.get(sub_id, 'none')
                     symbol = self._mastery_symbol(status)
                     self.tree.insert(topic_node, tk.END,
-                                      text=f'    {symbol} {sub[1]}',
+                                      text=f'{symbol} {sub[1]}',
                                       values=(sub_id,),
                                       tags=('subtopic',),
                                       iid=sub_id)
@@ -264,7 +263,7 @@ class OutlineModule:
         # 更新树节点文字
         symbol = self._mastery_symbol(new_mastery)
         name = self._topic_map[item_id]['name']
-        self.tree.item(item_id, text=f'    {symbol} {name}')
+        self.tree.item(item_id, text=f'{symbol} {name}')
 
         # 更新界面
         self.mastery_var.set(new_mastery)
@@ -287,7 +286,7 @@ class OutlineModule:
         # 更新树节点
         symbol = self._mastery_symbol(new_mastery)
         name = self._topic_map[item_id]['name']
-        self.tree.item(item_id, text=f'    {symbol} {name}')
+        self.tree.item(item_id, text=f'{symbol} {name}')
 
         status_name, fg, bg = MASTERY_MAP[new_mastery]
         self.mastery_label.config(text=status_name, fg=fg, bg=bg)
