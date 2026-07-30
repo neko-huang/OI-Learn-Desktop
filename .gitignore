@@ -17,6 +17,9 @@ build/
 
 # Data (user data, not version controlled)
 data/settings.json
+data/info-learn.db
+data/info-learn.db-journal
+data/info-learn.db-wal
 
 # Virtual environment
 venv/
