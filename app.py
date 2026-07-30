@@ -23,7 +23,7 @@ MODULES = [
 # 模块懒加载注册表：模块ID → (导入路径, 类名)
 _MODULE_LOADER = {
     'outline':      ('modules.outline',      'OutlineModule'),
-    # 其他模块待实现时添加
+    'encyclopedia': ('modules.encyclopedia', 'EncyclopediaModule'),
 }
 
 
