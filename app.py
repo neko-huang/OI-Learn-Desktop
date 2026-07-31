@@ -16,7 +16,7 @@ MODULES = [
     {'id': 'problems',     'name': '刷题',   'shortcut': 'Ctrl+3'},
     {'id': 'templates',    'name': '模板',   'shortcut': 'Ctrl+4'},
     {'id': 'mistakes',     'name': '易错集', 'shortcut': 'Ctrl+5'},
-    {'id': 'plan',         'name': '计划',   'shortcut': 'Ctrl+6'},
+    {'id': 'plan',         'name': '练习',   'shortcut': 'Ctrl+6'},
     {'id': 'stats',        'name': '统计',   'shortcut': 'Ctrl+7'},
 ]
 

@@ -176,6 +176,22 @@ def migrate():
         pass  # 字段已存在，忽略
     conn.close()
 
+    # v1.2: 添加练习模式字段
+    conn2 = get_connection()
+    try:
+        conn2.execute("ALTER TABLE practice_plans ADD COLUMN practice_mode TEXT DEFAULT 'free'")
+        conn2.commit()
+        print("[迁移] 已添加 practice_plans.practice_mode 字段")
+    except Exception:
+        pass
+    try:
+        conn2.execute("ALTER TABLE practice_plans ADD COLUMN duration INTEGER DEFAULT 0")
+        conn2.commit()
+        print("[迁移] 已添加 practice_plans.duration 字段")
+    except Exception:
+        pass
+    conn2.close()
+
     # 自动初始化时也执行迁移
     _run_migrations = True
 
