@@ -156,6 +156,24 @@ def initialize_database():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_plan_problems_plan ON plan_problems(plan_id)")
 
+    # ============================================================
+    # 8. 自定义大纲条目
+    # ============================================================
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS custom_topics (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic_id        TEXT    NOT NULL UNIQUE,   -- 唯一标识
+            parent_id       TEXT    DEFAULT '',        -- 父节点ID（分类或主题ID）
+            name            TEXT    NOT NULL,          -- 知识点名称
+            desc            TEXT    DEFAULT '',        -- Markdown 描述
+            difficulty      INTEGER DEFAULT 1,         -- 难度 1-8
+            level           TEXT    DEFAULT 'entry',   -- entry/improve/noi
+            category_name   TEXT    DEFAULT '自定义',  -- 所属大类名
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+
     conn.commit()
     conn.close()
 

@@ -362,23 +362,24 @@ class PlanModule:
             results = []
             if source == 'luogu':
                 from services.fetcher import search_luogu
-                for tag in tags[:5]:
+                for tag in tags[:3]:
                     r = search_luogu(keyword=tag, limit=count)
                     results.extend(r)
             elif source == 'codeforces':
                 from services.fetcher import search_codeforces
-                results = search_codeforces(tags=tags[:5], limit=count)
+                # CF/AT 不传中文标签 → 直接用难度过滤
+                results = search_codeforces(limit=count * 2)
             elif source == 'atcoder':
                 from services.fetcher import search_atcoder
-                for tag in tags[:5]:
-                    r = search_atcoder(keyword=tag, limit=count)
-                    results.extend(r)
+                results = search_atcoder(keyword='', limit=count * 2)
             else:
                 from services.fetcher import search_local
-                for tag in tags[:5]:
+                for tag in tags[:3]:
                     r = search_local(keyword=tag)
                     results.extend(r)
-                results = results[:count]
+                if not results:
+                    r = search_local()  # 无结果时搜索全部
+                    results = r
 
             # 去重 + 难度筛选
             seen = set()

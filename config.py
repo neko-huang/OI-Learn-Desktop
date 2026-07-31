@@ -160,24 +160,30 @@ class Config:
             'font_size': 11,
             'code_font_family': 'Consolas' if platform.system() == 'Windows' else 'monospace',
             'code_font_size': 11,
+            # 运行时写入的额外键（默认值确保存在）
+            'last_checkin_date': '',
+            'checkin_streak': 0,
+            'luogu_cookie': '',
+            'home_note': '',
         }
 
         self._load()
 
     # ---------- 持久化 ----------
     def _load(self):
-        """从配置文件加载设置"""
+        """从配置文件加载设置（合并所有保存的键，不限于默认列表）"""
         path = get_settings_path()
         if os.path.exists(path):
             try:
                 with open(path, 'r', encoding='utf-8') as f:
                     saved = json.load(f)
-                # 只合并已知配置项，防止脏数据
-                for key in self._settings:
-                    if key in saved:
-                        self._settings[key] = saved[key]
+                # 合并所有保存的键到 _settings
+                self._settings.update(saved)
+                # 确保默认键存在
+                for key in list(self._settings.keys()):
+                    if key not in saved and key not in self._settings:
+                        pass  # 保持默认值
             except (json.JSONDecodeError, IOError):
-                # 配置文件损坏或无法读取，使用默认值
                 pass
 
     def save(self):
