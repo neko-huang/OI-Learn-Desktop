@@ -26,6 +26,8 @@ _MODULE_LOADER = {
     'encyclopedia': ('modules.encyclopedia', 'EncyclopediaModule'),
     'problems':     ('modules.problems',     'ProblemsModule'),
     'templates':    ('modules.templates',    'TemplatesModule'),
+    'mistakes':     ('modules.mistakes',     'MistakesModule'),
+    'stats':        ('modules.stats',        'StatsModule'),
 }
 
 
