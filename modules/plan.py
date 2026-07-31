@@ -261,53 +261,42 @@ class PlanModule:
                   command=self._do_create_inline).pack(padx=pad, pady=12)
 
     def _build_gen_tags(self):
-        """构建知识点 chip 选择器"""
-        from modules.problem_meta import get_all_subtopic_tags
+        """构建知识点 chip 选择器 — 使用种子数据原始分类"""
+        from db.seed import ALGORITHM_CATEGORIES
         for w in self.gen_tags_frame.winfo_children():
             w.destroy()
         self.gen_tag_vars.clear()
 
         colors = self.config.get_colors()
-        all_tags = get_all_subtopic_tags()
-
-        # 按 18 大类分组，显示具体子知识点
-        row_frame = None
-        col = 0
         col_max = 7
-        for cat in PROBLEM_CATEGORIES:
-            cat_tags = [t for t in all_tags if t['category'] == cat]
-            if not cat_tags:
-                continue
-            # 大类标题
-            if col > 0:
-                # 新行
-                row_frame = tk.Frame(self.gen_tags_frame, bg=colors['bg_main'])
-                row_frame.pack(fill=tk.X, pady=1)
-                col = 0
 
-            tk.Label(self.gen_tags_frame, text=f'▸ {cat}',
+        for cat in ALGORITHM_CATEGORIES:  # 直接使用种子的22个大类
+            # 大类标题
+            tk.Label(self.gen_tags_frame, text=f'▸ {cat["name"]}',
                      font=(self.config.get('font_family'), 9, 'bold'),
-                     bg=colors['bg_main'], fg=colors['fg_accent']).pack(anchor=tk.W, padx=(4, 0))
+                     bg=colors['bg_main'], fg=colors['fg_accent']).pack(anchor=tk.W, padx=(4, 0), pady=(4, 0))
 
             row_frame = tk.Frame(self.gen_tags_frame, bg=colors['bg_main'])
             row_frame.pack(fill=tk.X, pady=(0, 4))
             col = 0
 
-            for t in cat_tags:
-                var = tk.BooleanVar()
-                self.gen_tag_vars[t['name']] = var
+            for topic in cat['topics']:
+                for sub in topic['subtopics']:
+                    name = sub[1]
+                    var = tk.BooleanVar()
+                    self.gen_tag_vars[name] = var
 
-                lbl = tk.Label(row_frame, text=t['name'],
-                               font=(self.config.get('font_family'), 9),
-                               bg=colors['bg_sidebar'], fg=colors['fg_primary'],
-                               relief=tk.FLAT, padx=6, pady=2, cursor='hand2')
-                lbl.pack(side=tk.LEFT, padx=1, pady=1)
-                lbl.bind('<Button-1>', self._make_tag_toggle(var, lbl))
-                col += 1
-                if col >= col_max:
-                    row_frame = tk.Frame(self.gen_tags_frame, bg=colors['bg_main'])
-                    row_frame.pack(fill=tk.X, pady=(0, 4))
-                    col = 0
+                    lbl = tk.Label(row_frame, text=name,
+                                   font=(self.config.get('font_family'), 9),
+                                   bg=colors['bg_sidebar'], fg=colors['fg_primary'],
+                                   relief=tk.FLAT, padx=6, pady=2, cursor='hand2')
+                    lbl.pack(side=tk.LEFT, padx=1, pady=1)
+                    lbl.bind('<Button-1>', self._make_tag_toggle(var, lbl))
+                    col += 1
+                    if col >= col_max:
+                        row_frame = tk.Frame(self.gen_tags_frame, bg=colors['bg_main'])
+                        row_frame.pack(fill=tk.X, pady=(0, 4))
+                        col = 0
 
     def _make_tag_toggle(self, var, lbl):
         def handler(e):
@@ -359,6 +348,9 @@ class PlanModule:
             self.gen_status.config(text='请选择至少一个知识点')
             return
 
+        # 读取选中的难度
+        diffs = [d for d, v in self.gen_diff_vars.items() if v.get()]
+
         source = self.gen_source_var.get()
         try:
             count = int(self.gen_count.get())
@@ -371,26 +363,30 @@ class PlanModule:
             results = []
             if source == 'luogu':
                 from services.fetcher import search_luogu
-                for tag in tags[:3]:
+                for tag in tags[:5]:
                     r = search_luogu(keyword=tag, limit=count)
                     results.extend(r)
             elif source == 'codeforces':
                 from services.fetcher import search_codeforces
-                results = search_codeforces(tags=tags[:3], limit=count)
+                results = search_codeforces(tags=tags[:5], limit=count)
             else:
                 from services.fetcher import search_local
-                for tag in tags[:3]:
+                for tag in tags[:5]:
                     r = search_local(keyword=tag)
                     results.extend(r)
                 results = results[:count]
 
-            # 去重
+            # 去重 + 难度筛选
             seen = set()
             unique = []
             for r in results:
-                if r.get('platform_id', '') not in seen:
-                    seen.add(r['platform_id'])
-                    unique.append(r)
+                rid = r.get('platform_id', '') or r.get('title', '')
+                if rid in seen:
+                    continue
+                if diffs and r.get('difficulty', '') not in diffs:
+                    continue
+                seen.add(rid)
+                unique.append(r)
             results = unique[:count]
 
             self.parent.after(0, lambda: self._on_gen_results(results))
@@ -544,6 +540,9 @@ class PlanModule:
         tk.Button(vbar, text='+ 添加题目', font=(self.config.get('font_family'), 10),
                   bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
                   cursor='hand2', command=self._add_problem_dialog).pack(side=tk.RIGHT, padx=8)
+        tk.Button(vbar, text='导入题单', font=(self.config.get('font_family'), 10),
+                  bg=colors['bg_sidebar'], fg=colors['fg_accent'], relief=tk.FLAT,
+                  cursor='hand2', command=self._import_problemset_dialog).pack(side=tk.RIGHT, padx=8)
         tk.Button(vbar, text='开始练习', font=(self.config.get('font_family'), 10, 'bold'),
                   bg=colors['success'], fg='#ffffff', relief=tk.FLAT,
                   padx=20, cursor='hand2', command=self._start_practice).pack(side=tk.RIGHT, padx=8)
@@ -670,6 +669,159 @@ class PlanModule:
             self._load_view()
         except Exception as e:
             self.app.set_status(f'添加失败: {e}')
+
+    # ============================================================
+    # 导入题单（洛谷 training 链接）
+    # ============================================================
+
+    def _import_problemset_dialog(self):
+        if not self._current_id:
+            return
+        dialog = tk.Toplevel(self.parent)
+        dialog.title('导入题单')
+        dialog.geometry('480x400')
+        dialog.transient(self.parent)
+        colors = self.config.get_colors()
+        dialog.configure(bg=colors['bg_main'])
+
+        tk.Label(dialog, text='导入洛谷题单',
+                 font=(self.config.get('font_family'), 14, 'bold'),
+                 bg=colors['bg_main'], fg=colors['fg_primary']).pack(pady=(14, 4))
+
+        tk.Label(dialog, text='粘贴洛谷训练题单链接或编号',
+                 font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_main'], fg=colors['fg_muted']).pack()
+
+        # 输入框
+        entry_frame = tk.Frame(dialog, bg=colors['bg_main'])
+        entry_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
+
+        self.import_url_var = tk.StringVar()
+        tk.Entry(entry_frame, textvariable=self.import_url_var,
+                 font=(self.config.get('font_family'), 12),
+                 bg=colors['bg_input'], fg=colors['fg_primary'],
+                 relief=tk.FLAT).pack(fill=tk.X, ipady=4)
+
+        # 示例
+        tk.Label(dialog, text='例如: https://www.luogu.com.cn/training/30300  或直接输入 30300',
+                 font=(self.config.get('font_family'), 9),
+                 bg=colors['bg_main'], fg=colors['fg_muted']).pack(pady=(0, 8))
+
+        # 结果区
+        self.import_result_label = tk.Label(dialog, text='',
+                                             font=(self.config.get('font_family'), 10),
+                                             bg=colors['bg_main'], fg=colors['fg_muted'])
+        self.import_result_label.pack(anchor=tk.W, padx=20)
+
+        self.import_result_frame = tk.Frame(dialog, bg=colors['bg_main'])
+        self.import_result_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(4, 8))
+
+        # 按钮行
+        btn_row = tk.Frame(dialog, bg=colors['bg_main'])
+        btn_row.pack(fill=tk.X, padx=20, pady=(0, 12))
+        tk.Button(btn_row, text='关闭', font=(self.config.get('font_family'), 11),
+                  bg=colors['bg_sidebar'], fg=colors['fg_primary'],
+                  relief=tk.FLAT, padx=16, pady=6,
+                  command=dialog.destroy).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(btn_row, text='导入', font=(self.config.get('font_family'), 11, 'bold'),
+                  bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
+                  padx=20, pady=6,
+                  command=lambda: self._do_import(dialog)).pack(side=tk.RIGHT)
+
+    def _do_import(self, dialog):
+        url = self.import_url_var.get().strip()
+        if not url:
+            return
+
+        # 提取 training ID
+        import re
+        m = re.search(r'training/(\d+)', url)
+        if not m:
+            # 尝试纯数字
+            m = re.match(r'^(\d+)$', url)
+            if not m:
+                self.import_result_label.config(text='无法识别题单链接，请输入有效的洛谷训练链接')
+                return
+
+        tid = m.group(1)
+        self.import_result_label.config(text=f'正在获取题单 #{tid} ...')
+
+        def _fetch():
+            try:
+                import requests
+                resp = requests.get(
+                    f'https://www.luogu.com.cn/training/{tid}?_contentOnly=1',
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
+                    timeout=15
+                )
+                data = resp.json()
+                if data.get('code') != 200:
+                    self.parent.after(0, lambda: self.import_result_label.config(text='获取失败，请检查题单编号是否正确'))
+                    return
+
+                probs = data.get('currentData', {}).get('training', {}).get('problems', [])
+                results = []
+                for p in probs:
+                    prob = p.get('problem', {})
+                    results.append({
+                        'platform': '洛谷',
+                        'platform_id': prob.get('pid', ''),
+                        'title': prob.get('title', ''),
+                        'difficulty': '',
+                    })
+
+                self.parent.after(0, lambda: self._show_import_results(results, dialog))
+            except Exception as e:
+                self.parent.after(0, lambda: self.import_result_label.config(text=f'网络请求失败: {e}'))
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    def _show_import_results(self, results, dialog):
+        if not results:
+            self.import_result_label.config(text='未找到题目')
+            return
+
+        self.import_result_label.config(text=f'找到 {len(results)} 道题目，点击确认导入')
+        for w in self.import_result_frame.winfo_children():
+            w.destroy()
+
+        colors = self.config.get_colors()
+        for p in results:
+            row = tk.Frame(self.import_result_frame, bg=colors['bg_main'])
+            row.pack(fill=tk.X, pady=1)
+            tk.Label(row, text=p['platform_id'],
+                     font=(self.config.get('font_family'), 9),
+                     bg=colors['bg_main'], fg=colors['fg_muted']).pack(side=tk.LEFT, padx=(0, 8))
+            tk.Label(row, text=p['title'][:35],
+                     font=(self.config.get('font_family'), 10),
+                     bg=colors['bg_main'], fg=colors['fg_primary'], anchor=tk.W
+                     ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # 确认导入
+        def do_bulk_import():
+            try:
+                conn = get_connection()
+                max_order = conn.execute(
+                    "SELECT MAX(sort_order) FROM plan_problems WHERE plan_id=?",
+                    (self._current_id,)).fetchone()
+                next_order = (max_order[0] or 0) + 1
+                for p in results:
+                    conn.execute(
+                        "INSERT INTO plan_problems (plan_id, platform, platform_id, title, difficulty, sort_order) VALUES (?,?,?,?,?,?)",
+                        (self._current_id, p['platform'], p['platform_id'], p['title'], p.get('difficulty', ''), next_order))
+                    next_order += 1
+                conn.commit()
+                conn.close()
+                self.app.set_status(f'已导入 {len(results)} 道题目')
+                self._load_view()
+            except Exception as e:
+                self.app.set_status(f'导入失败: {e}')
+            dialog.destroy()
+
+        tk.Button(self.import_result_frame, text='确认导入全部',
+                  font=(self.config.get('font_family'), 11, 'bold'),
+                  bg=colors['success'], fg='#ffffff', relief=tk.FLAT,
+                  padx=16, pady=6, command=do_bulk_import).pack(pady=8)
 
     # ============================================================
     # 练习中模式

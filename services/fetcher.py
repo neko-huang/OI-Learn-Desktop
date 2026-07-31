@@ -6,8 +6,9 @@
 import requests
 import time
 
-# 洛谷搜索缓存（避免重复请求）
+# 洛谷搜索缓存（避免重复请求，最多500条）
 _cache = {}
+_MAX_CACHE = 500
 
 
 def search_luogu(keyword: str = '', difficulty: str = '', page: int = 1, limit: int = 20):
@@ -53,6 +54,8 @@ def search_luogu(keyword: str = '', difficulty: str = '', page: int = 1, limit: 
             })
 
         _cache[cache_key] = problems
+        if len(_cache) > _MAX_CACHE:
+            _cache.pop(next(iter(_cache)))  # 移除最旧的条目
         return problems
 
     except requests.exceptions.Timeout:
@@ -93,8 +96,6 @@ def search_codeforces(tags: list = None, min_rating: int = None, max_rating: int
             return []
 
         all_problems = data['result']['problems']
-        all_stats = {s['contestId'] * 100 + ord(s['index']) - 65: s.get('rating', 0)
-                     for s in data['result'].get('problemStatistics', [])}
 
         problems = []
         for p in all_problems:
