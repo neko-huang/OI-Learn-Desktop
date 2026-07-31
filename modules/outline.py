@@ -73,7 +73,6 @@ class OutlineModule:
 
         self.tree = ttk.Treeview(
             tree_frame,
-            columns=('status',),
             show='tree',
             selectmode='browse',
         )
@@ -84,7 +83,6 @@ class OutlineModule:
         self.tree.configure(yscrollcommand=scrollbar.set)
 
         self.tree.bind('<<TreeviewSelect>>', self._on_select)
-        self.tree.bind('<Double-1>', self._on_double_click)
 
         # 填充树
         self._populate_tree()
@@ -154,7 +152,6 @@ class OutlineModule:
                     symbol = self._mastery_symbol(status)
                     self.tree.insert(topic_node, tk.END,
                                       text=f'{symbol} {sub[1]}',
-                                      values=(sub_id,),
                                       tags=('subtopic',),
                                       iid=sub_id)
 
@@ -244,32 +241,6 @@ class OutlineModule:
         content += f'- **掌握度**: {status_name}\n'
 
         self.markdown_view.render(content)
-
-    def _on_double_click(self, event):
-        """双击切换掌握度"""
-        selection = self.tree.selection()
-        if not selection:
-            return
-        item_id = selection[0]
-        if item_id not in self._topic_map:
-            return
-
-        cycle = {'none': 'learning', 'learning': 'familiar',
-                 'familiar': 'mastered', 'mastered': 'none'}
-        current = self._progress.get(item_id, 'none')
-        new_mastery = cycle[current]
-        self._save_progress(item_id, new_mastery)
-
-        # 更新树节点文字
-        symbol = self._mastery_symbol(new_mastery)
-        name = self._topic_map[item_id]['name']
-        self.tree.item(item_id, text=f'{symbol} {name}')
-
-        # 更新界面
-        self.mastery_var.set(new_mastery)
-        status_name, fg, bg = MASTERY_MAP[new_mastery]
-        self.mastery_label.config(text=status_name, fg=fg, bg=bg)
-        self.app.set_status(f'「{name}」→ {status_name}')
 
     def _on_mastery_changed(self, event):
         """下拉框改变掌握度"""
