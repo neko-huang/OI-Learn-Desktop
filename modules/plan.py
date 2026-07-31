@@ -52,7 +52,7 @@ class PlanModule:
         tk.Button(top, text='+ 新建练习', font=(self.config.get('font_family'), 10),
                   bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
                   padx=16, pady=4, cursor='hand2',
-                  command=self._new_practice_dialog).pack(side=tk.RIGHT, padx=8, pady=8)
+                  command=self._start_new).pack(side=tk.RIGHT, padx=8, pady=8)
 
         main = tk.Frame(self.parent, bg=colors['bg_main'])
         main.pack(fill=tk.BOTH, expand=True)
@@ -93,6 +93,8 @@ class PlanModule:
                  bg=colors['bg_main'], fg=colors['fg_muted']
                  ).place(relx=0.5, rely=0.5, anchor=tk.CENTER)
 
+        # 新建模式
+        self._build_new_frame()
         # 查看模式
         self.view_frame = tk.Frame(self.right, bg=colors['bg_main'])
 
@@ -181,10 +183,83 @@ class PlanModule:
 
     def _show_frame(self, name):
         self._mode = name
-        for n in ('view', 'active', 'empty'):
+        for n in ('view', 'active', 'empty', 'new'):
             if hasattr(self, f'{n}_frame'):
                 getattr(self, f'{n}_frame').pack_forget()
         getattr(self, f'{name}_frame').pack(fill=tk.BOTH, expand=True)
+
+    def _build_new_frame(self):
+        colors = self.config.get_colors()
+        self.new_frame = tk.Frame(self.right, bg=colors['bg_main'])
+        pad = 16
+
+        tk.Label(self.new_frame, text='新建完成后切换将自动保存', font=(self.config.get('font_family'), 9),
+                 bg=colors['bg_main'], fg=colors['fg_muted'], anchor=tk.W).pack(fill=tk.X, padx=pad, pady=(6, 0))
+
+        tk.Label(self.new_frame, text='练习名称 *', font=(self.config.get('font_family'), 11),
+                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=pad, pady=(12, 0))
+        self.n_name = tk.Entry(self.new_frame, font=(self.config.get('font_family'), 13, 'bold'),
+                                bg=colors['bg_input'], fg=colors['fg_primary'], relief=tk.FLAT)
+        self.n_name.pack(fill=tk.X, padx=pad, pady=(2, 8), ipady=4)
+
+        tk.Label(self.new_frame, text='练习模式', font=(self.config.get('font_family'), 11),
+                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=pad)
+        self.n_mode = tk.StringVar(value='free')
+        for val, txt in [('free', '自由练习'), ('timed', '定时模拟')]:
+            tk.Radiobutton(self.new_frame, text=txt, variable=self.n_mode, value=val,
+                           font=(self.config.get('font_family'), 10),
+                           bg=colors['bg_main'], fg=colors['fg_primary'],
+                           selectcolor=colors['bg_sidebar']).pack(anchor=tk.W, padx=pad+20)
+
+        dur_row = tk.Frame(self.new_frame, bg=colors['bg_main'])
+        dur_row.pack(fill=tk.X, padx=pad, pady=(8, 8))
+        tk.Label(dur_row, text='时长(分钟):', font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_main'], fg=colors['fg_secondary']).pack(side=tk.LEFT)
+        self.n_dur = ttk.Combobox(dur_row, values=['60', '90', '120', '150', '180', '240', '300'],
+                                   state='readonly', width=8)
+        self.n_dur.pack(side=tk.LEFT, padx=4)
+        self.n_dur.set('120')
+
+        tk.Label(self.new_frame, text='描述（可选）', font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=pad)
+        self.n_desc = tk.Text(self.new_frame, font=(self.config.get('font_family'), 10),
+                               bg=colors['bg_input'], fg=colors['fg_primary'],
+                               relief=tk.FLAT, wrap=tk.WORD, height=3)
+        self.n_desc.pack(fill=tk.X, padx=pad, pady=(2, 8))
+
+        btn_row = tk.Frame(self.new_frame, bg=colors['bg_main'])
+        btn_row.pack(fill=tk.X, padx=pad)
+        tk.Button(btn_row, text='创建', font=(self.config.get('font_family'), 11, 'bold'),
+                  bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
+                  padx=20, pady=6, command=self._do_create_inline).pack(side=tk.LEFT)
+
+    def _start_new(self):
+        self.n_name.delete(0, tk.END)
+        self.n_mode.set('free')
+        self.n_dur.set('120')
+        self.n_desc.delete('1.0', tk.END)
+        self._show_frame('new')
+
+    def _do_create_inline(self):
+        name = self.n_name.get().strip()
+        if not name:
+            messagebox.showwarning('提示', '请输入名称')
+            return
+        mode = self.n_mode.get()
+        dur = int(self.n_dur.get()) if mode == 'timed' else 0
+        desc = self.n_desc.get('1.0', tk.END).strip()
+        try:
+            conn = get_connection()
+            conn.execute(
+                "INSERT INTO practice_plans (name, description, practice_mode, duration) VALUES (?,?,?,?)",
+                (name, desc, mode, dur))
+            conn.commit()
+            conn.close()
+            self._refresh_list()
+            self._show_frame('empty')
+            self.app.set_status(f'练习「{name}」已创建')
+        except Exception as e:
+            self.app.set_status(f'创建失败: {e}')
 
     # ============================================================
     # 练习列表
@@ -285,99 +360,6 @@ class PlanModule:
 
         except Exception as e:
             self.app.set_status(f'加载失败: {e}')
-
-    # ============================================================
-    # 新建练习对话框
-    # ============================================================
-
-    def _new_practice_dialog(self):
-        dialog = tk.Toplevel(self.parent)
-        dialog.title('新建练习')
-        dialog.geometry('450x320')
-        dialog.transient(self.parent)
-        dialog.resizable(False, False)
-        colors = self.config.get_colors()
-        dialog.configure(bg=colors['bg_main'])
-
-        tk.Label(dialog, text='新建练习', font=(self.config.get('font_family'), 16, 'bold'),
-                 bg=colors['bg_main'], fg=colors['fg_primary']).pack(pady=(16, 12))
-
-        tk.Label(dialog, text='名称', font=(self.config.get('font_family'), 11),
-                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=20)
-        name_var = tk.StringVar()
-        tk.Entry(dialog, textvariable=name_var, font=(self.config.get('font_family'), 12),
-                 bg=colors['bg_input'], fg=colors['fg_primary'], relief=tk.FLAT
-                 ).pack(fill=tk.X, padx=20, pady=(2, 10), ipady=4)
-
-        # 练习模式
-        tk.Label(dialog, text='练习模式', font=(self.config.get('font_family'), 11),
-                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=20)
-
-        mode_var = tk.StringVar(value='free')
-        mode_frame = tk.Frame(dialog, bg=colors['bg_main'])
-        mode_frame.pack(fill=tk.X, padx=20, pady=(2, 0))
-
-        tk.Radiobutton(mode_frame, text='自由练习（无时间限制）', variable=mode_var, value='free',
-                       font=(self.config.get('font_family'), 10),
-                       bg=colors['bg_main'], fg=colors['fg_primary'],
-                       selectcolor=colors['bg_sidebar']).pack(anchor=tk.W)
-
-        tk.Radiobutton(mode_frame, text='定时模拟（限时完成）', variable=mode_var, value='timed',
-                       font=(self.config.get('font_family'), 10),
-                       bg=colors['bg_main'], fg=colors['fg_primary'],
-                       selectcolor=colors['bg_sidebar']).pack(anchor=tk.W)
-
-        # 时长
-        dur_frame = tk.Frame(dialog, bg=colors['bg_main'])
-        dur_frame.pack(fill=tk.X, padx=20, pady=(8, 4))
-        tk.Label(dur_frame, text='时长（分钟）:', font=(self.config.get('font_family'), 10),
-                 bg=colors['bg_main'], fg=colors['fg_secondary']).pack(side=tk.LEFT)
-        dur_var = tk.StringVar(value='120')
-        ttk.Combobox(dur_frame, textvariable=dur_var, values=['60', '90', '120', '150', '180', '240', '300'],
-                      state='readonly', width=8).pack(side=tk.LEFT, padx=4)
-
-        # 描述
-        tk.Label(dialog, text='描述（可选）', font=(self.config.get('font_family'), 10),
-                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=20, pady=(8, 0))
-        desc_text = tk.Text(dialog, font=(self.config.get('font_family'), 10),
-                            bg=colors['bg_input'], fg=colors['fg_primary'],
-                            relief=tk.FLAT, height=2, wrap=tk.WORD)
-        desc_text.pack(fill=tk.X, padx=20, pady=(2, 8))
-
-        btn_row = tk.Frame(dialog, bg=colors['bg_main'])
-        btn_row.pack(fill=tk.X, padx=20, pady=(4, 12))
-        tk.Button(btn_row, text='取消', font=(self.config.get('font_family'), 11),
-                  bg=colors['bg_sidebar'], fg=colors['fg_primary'],
-                  relief=tk.FLAT, padx=16, pady=6,
-                  command=dialog.destroy).pack(side=tk.RIGHT, padx=(8, 0))
-        tk.Button(btn_row, text='创建', font=(self.config.get('font_family'), 11),
-                  bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT, padx=16, pady=6,
-                  command=lambda: self._create_practice(
-                      name_var.get().strip(), mode_var.get(), dur_var.get(),
-                      desc_text.get('1.0', tk.END).strip(), dialog)
-                  ).pack(side=tk.RIGHT)
-
-    def _create_practice(self, name, mode, duration, desc, dialog):
-        if not name:
-            messagebox.showwarning('提示', '请输入名称')
-            return
-        try:
-            duration_val = int(duration) if mode == 'timed' else 0
-        except Exception:
-            duration_val = 0
-        try:
-            conn = get_connection()
-            conn.execute(
-                """INSERT INTO practice_plans (name, description, practice_mode, duration)
-                   VALUES (?, ?, ?, ?)""",
-                (name, desc, mode, duration_val))
-            conn.commit()
-            conn.close()
-            dialog.destroy()
-            self._refresh_list()
-            self.app.set_status(f'练习「{name}」已创建')
-        except Exception as e:
-            self.app.set_status(f'创建失败: {e}')
 
     # ============================================================
     # 智能生成题单
@@ -774,7 +756,7 @@ class PlanModule:
             self.app.set_status(f'删除失败: {e}')
 
     def on_new(self):
-        self._new_practice_dialog()
+        self._start_new()
 
     def apply_theme(self):
         for w in self.parent.winfo_children():
