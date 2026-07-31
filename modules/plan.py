@@ -250,13 +250,17 @@ class PlanModule:
         desc = self.n_desc.get('1.0', tk.END).strip()
         try:
             conn = get_connection()
-            conn.execute(
+            cursor = conn.execute(
                 "INSERT INTO practice_plans (name, description, practice_mode, duration) VALUES (?,?,?,?)",
                 (name, desc, mode, dur))
+            new_id = cursor.lastrowid
             conn.commit()
             conn.close()
             self._refresh_list()
-            self._show_frame('empty')
+            # 自动选中新练习并切换到查看模式
+            self._current_id = new_id
+            self._show_frame('view')
+            self._load_view()
             self.app.set_status(f'练习「{name}」已创建')
         except Exception as e:
             self.app.set_status(f'创建失败: {e}')

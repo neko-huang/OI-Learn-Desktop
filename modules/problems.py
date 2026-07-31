@@ -215,6 +215,14 @@ class ProblemsModule:
         self.view_frame = tk.Frame(self.right_wrapper, bg=colors['bg_main'])
         self._build_view_mode()
         self.edit_frame = tk.Frame(self.right_wrapper, bg=colors['bg_main'])
+        # Canvas + 滚动条包装编辑内容
+        self.edit_canvas = tk.Canvas(self.edit_frame, bg=colors['bg_main'], highlightthickness=0)
+        self.edit_scroll = ttk.Scrollbar(self.edit_frame, orient=tk.VERTICAL, command=self.edit_canvas.yview)
+        self.edit_inner = tk.Frame(self.edit_canvas, bg=colors['bg_main'])
+        self.edit_canvas.create_window((0, 0), window=self.edit_inner, anchor=tk.NW)
+        self.edit_canvas.configure(yscrollcommand=self.edit_scroll.set)
+        self.edit_inner.bind('<Configure>', lambda e: self.edit_canvas.configure(scrollregion=self.edit_canvas.bbox('all')))
+        self.edit_canvas.bind('<Configure>', lambda e: self.edit_canvas.itemconfig(self.edit_canvas.find_withtag('all')[0] if self.edit_canvas.find_all() else None, width=e.width))
         self._build_edit_mode()
         self.empty_frame = tk.Frame(self.right_wrapper, bg=colors['bg_main'])
         tk.Label(self.empty_frame, text='选择一个题目查看\n或点击「+ 新建题目」录入',
@@ -229,6 +237,12 @@ class ProblemsModule:
         for n in ('view', 'edit', 'empty'):
             getattr(self, f'{n}_frame').pack_forget()
         getattr(self, f'{name}_frame').pack(fill=tk.BOTH, expand=True)
+        if name == 'edit':
+            self.edit_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self.edit_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        else:
+            self.edit_canvas.pack_forget()
+            self.edit_scroll.pack_forget()
 
     # ============================================================
     # 查看模式
@@ -347,7 +361,7 @@ class ProblemsModule:
         pad_x = 20
 
         # 提示
-        self.edit_hint = tk.Label(self.edit_frame,
+        self.edit_hint = tk.Label(self.edit_inner,
                                    text='',
                                    font=(self.config.get('font_family'), 9),
                                    bg=colors['bg_main'], fg=colors['fg_muted'], anchor=tk.W,
@@ -355,7 +369,7 @@ class ProblemsModule:
         self.edit_hint.pack(fill=tk.X, pady=(8, 0))
 
         # 第一行：题号 (*) + 难度 | 标题 (*) + 状态
-        row1 = tk.Frame(self.edit_frame, bg=colors['bg_main'])
+        row1 = tk.Frame(self.edit_inner, bg=colors['bg_main'])
         row1.pack(fill=tk.X, padx=pad_x, pady=(8, 0))
 
         # 左侧：题号
@@ -380,7 +394,7 @@ class ProblemsModule:
         self.e_difficulty.bind('<<ComboboxSelected>>', lambda e: self._mark_dirty())
 
         # 第二行：标题 + 状态
-        row2 = tk.Frame(self.edit_frame, bg=colors['bg_main'])
+        row2 = tk.Frame(self.edit_inner, bg=colors['bg_main'])
         row2.pack(fill=tk.X, padx=pad_x, pady=(12, 0))
 
         left2 = tk.Frame(row2, bg=colors['bg_main'])
@@ -406,7 +420,7 @@ class ProblemsModule:
         self.e_status.bind('<<ComboboxSelected>>', lambda e: self._mark_dirty())
 
         # 第三行：OJ链接
-        row3 = tk.Frame(self.edit_frame, bg=colors['bg_main'])
+        row3 = tk.Frame(self.edit_inner, bg=colors['bg_main'])
         row3.pack(fill=tk.X, padx=pad_x, pady=(12, 0))
         tk.Label(row3, text='OJ链接', font=(self.config.get('font_family'), 11),
                  bg=colors['bg_main'], fg=colors['fg_primary']).pack(anchor=tk.W)
@@ -416,7 +430,7 @@ class ProblemsModule:
         self.e_url.bind('<KeyRelease>', lambda e: self._mark_dirty())
 
         # 第四行：知识点标签
-        row4 = tk.Frame(self.edit_frame, bg=colors['bg_main'])
+        row4 = tk.Frame(self.edit_inner, bg=colors['bg_main'])
         row4.pack(fill=tk.X, padx=pad_x, pady=(12, 0))
         tk.Label(row4, text='知识点标签', font=(self.config.get('font_family'), 11),
                  bg=colors['bg_main'], fg=colors['fg_primary']).pack(anchor=tk.W)
@@ -442,13 +456,13 @@ class ProblemsModule:
         self._render_tag_chips()
 
         # 题意 - 分屏编辑器
-        self._build_md_editor(self.edit_frame, '题目描述（题意）', 'e_desc')
+        self._build_md_editor(self.edit_inner, '题目描述（题意）', 'e_desc')
 
         # 题解 - 分屏编辑器
-        self._build_md_editor(self.edit_frame, '题解', 'e_sol')
+        self._build_md_editor(self.edit_inner, '题解', 'e_sol')
 
         # 底部按钮
-        bar = tk.Frame(self.edit_frame, bg=colors['bg_sidebar'], height=40)
+        bar = tk.Frame(self.edit_inner, bg=colors['bg_sidebar'], height=40)
         bar.pack(fill=tk.X, side=tk.BOTTOM)
         bar.pack_propagate(False)
         tk.Button(bar, text='返回查看', font=(self.config.get('font_family'), 10),
