@@ -11,17 +11,19 @@ from db.seed import seed_database
 
 
 MODULES = [
-    {'id': 'outline',      'name': '大纲',   'shortcut': 'Ctrl+1'},
-    {'id': 'encyclopedia', 'name': '百科',   'shortcut': 'Ctrl+2'},
-    {'id': 'problems',     'name': '刷题',   'shortcut': 'Ctrl+3'},
-    {'id': 'templates',    'name': '模板',   'shortcut': 'Ctrl+4'},
-    {'id': 'mistakes',     'name': '易错集', 'shortcut': 'Ctrl+5'},
-    {'id': 'plan',         'name': '练习',   'shortcut': 'Ctrl+6'},
-    {'id': 'stats',        'name': '统计',   'shortcut': 'Ctrl+7'},
+    {'id': 'home',         'name': '首页',   'shortcut': 'Ctrl+1'},
+    {'id': 'outline',      'name': '大纲',   'shortcut': 'Ctrl+2'},
+    {'id': 'encyclopedia', 'name': '百科',   'shortcut': 'Ctrl+3'},
+    {'id': 'problems',     'name': '刷题',   'shortcut': 'Ctrl+4'},
+    {'id': 'templates',    'name': '模板',   'shortcut': 'Ctrl+5'},
+    {'id': 'mistakes',     'name': '易错集', 'shortcut': 'Ctrl+6'},
+    {'id': 'plan',         'name': '练习',   'shortcut': 'Ctrl+7'},
+    {'id': 'stats',        'name': '统计',   'shortcut': 'Ctrl+8'},
 ]
 
 # 模块懒加载注册表：模块ID → (导入路径, 类名)
 _MODULE_LOADER = {
+    'home':         ('modules.home',         'HomeModule'),
     'outline':      ('modules.outline',      'OutlineModule'),
     'encyclopedia': ('modules.encyclopedia', 'EncyclopediaModule'),
     'problems':     ('modules.problems',     'ProblemsModule'),
@@ -61,7 +63,7 @@ class App(tk.Tk):
         self._build_status_bar()
         self.apply_theme()
         self._bind_shortcuts()
-        self.switch_module('outline')
+        self.switch_module('home')
 
         # 显示种子数据导入状态
         if seed_msg:

@@ -1,67 +1,18 @@
 """
-练习模块（题单 + VP 合并）
-- 两种模式：自由练习 / 定时模拟
-- 题目来源：本地题库 / 外部搜索（洛谷+CF API）/ 手动输入
-- 智能生成：选择算法标签 → 搜索 → 选数量加入
-- 模拟赛倒计时器
-- 进度追踪
+练习模块（题单 + VP）
+- 自由练习 / 定时模拟
+- 新建时内嵌智能生成（选知识点→搜索→加入）
+- 进度追踪 + 模拟赛倒计时
 """
 
 import json
 import threading
 import tkinter as tk
-from datetime import date, timedelta
 from tkinter import ttk, messagebox
 
 from config import Config
 from db.database import get_connection
-from modules.problem_meta import DIFFICULTIES, STATUS_SYMBOLS
-
-
-def get_upcoming_contests():
-    """
-    返回近期赛事信息（公开赛估算 + NOI 系列年度赛事）。
-    公开赛按月估算实际场次，NOI 系列使用 2026 年度已知日期。
-    """
-    today = date.today()
-    year = today.year
-    contests = []
-
-    # NOI 系列年度赛事（使用近似日期，实际以官方公告为准）
-    annual_events = [
-        ('NOI 冬令营', f'{year}-02-05'),
-        ('WC WCCT', f'{year}-02-10'),
-        ('CTS 比赛', f'{year}-02-15'),
-        ('APIO', f'{year}-05-08'),
-        ('NOI 省选', f'{year}-04-15'),
-        ('NOI 国赛', f'{year}-07-15'),
-        ('NOI 决赛', f'{year}-07-20'),
-        ('NOI 集训队', f'{year}-08-01'),
-        ('NOIP 提高组', f'{year}-11-15'),
-        ('NOIP 普及组', f'{year}-10-18'),
-        ('NOI 模拟赛 Round 1', f'{year}-09-15'),
-    ]
-
-    for name, date_str in annual_events:
-        try:
-            d = date.fromisoformat(date_str)
-            contests.append({'name': name, 'date': d, 'type': 'NOI 系列'})
-        except Exception:
-            pass
-
-    # 公开赛（按月估算）
-    months_ahead = 6
-    cur = date(today.year, today.month, 1)
-    for i in range(months_ahead):
-        m = cur.month + i
-        y = cur.year + (m - 1) // 12
-        m = ((m - 1) % 12) + 1
-        contests.append({'name': f'Codeforces Round ≈6-8 场', 'date': date(y, m, 15), 'type': 'CF'})
-        contests.append({'name': f'AtCoder 常规赛 ≈4 场', 'date': date(y, m, 20), 'type': 'AT'})
-        contests.append({'name': f'洛谷周赛 ≈4 场', 'date': date(y, m, 25), 'type': '洛谷'})
-
-    contests.sort(key=lambda c: c['date'])
-    return contests
+from modules.problem_meta import DIFFICULTIES, PROBLEM_CATEGORIES, PLATFORMS, STATUS_SYMBOLS
 
 
 class PlanModule:
@@ -74,15 +25,16 @@ class PlanModule:
             w.destroy()
 
         self._current_id = None
-        self._mode = 'view'         # 'view' | 'active' | 'empty'
-        self._timer_id = None       # 计时器 after id
-        self._remaining_sec = 0     # 模拟赛剩余秒数
+        self._mode = 'view'
+        self._timer_id = None
+        self._remaining_sec = 0
+        self._gen_results = []  # 智能生成的题目缓存
 
         self._build_ui()
         self._refresh_list()
 
     # ============================================================
-    # UI
+    # UI 框架
     # ============================================================
 
     def _build_ui(self):
@@ -91,7 +43,6 @@ class PlanModule:
         top = tk.Frame(self.parent, bg=colors['bg_sidebar'], height=42)
         top.pack(fill=tk.X)
         top.pack_propagate(False)
-
         tk.Label(top, text='练习', font=(self.config.get('font_family'), 12, 'bold'),
                  bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(side=tk.LEFT, padx=12)
 
@@ -107,6 +58,10 @@ class PlanModule:
         self._build_left(main)
         self._build_right(main)
 
+    # ============================================================
+    # 左侧栏
+    # ============================================================
+
     def _build_left(self, parent):
         colors = self.config.get_colors()
         left = tk.Frame(parent, bg=colors['bg_sidebar'], width=240)
@@ -114,8 +69,7 @@ class PlanModule:
         left.pack_propagate(False)
 
         tk.Label(left, text='练习列表', font=(self.config.get('font_family'), 12, 'bold'),
-                 bg=colors['bg_sidebar'], fg=colors['fg_primary']
-                 ).pack(anchor=tk.W, padx=12, pady=(6, 4))
+                 bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(anchor=tk.W, padx=12, pady=(6, 4))
 
         self.listbox = tk.Listbox(left, font=(self.config.get('font_family'), 10),
                                    bg=colors['bg_input'], fg=colors['fg_primary'],
@@ -128,102 +82,28 @@ class PlanModule:
         sb.pack(side=tk.RIGHT, fill=tk.Y, pady=(0, 8), padx=(0, 8))
         self.listbox.configure(yscrollcommand=sb.set)
 
+    # ============================================================
+    # 右侧 — 四种模式
+    # ============================================================
+
     def _build_right(self, parent):
         colors = self.config.get_colors()
         self.right = tk.Frame(parent, bg=colors['bg_main'])
         self.right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # 空状态 —— 签到 + 赛事 + 提示
+        # 空状态
         self.empty_frame = tk.Frame(self.right, bg=colors['bg_main'])
-        self._build_empty_content()
+        tk.Label(self.empty_frame, text='选择一个练习查看\n或点击「+ 新建练习」创建',
+                 font=(self.config.get('font_family'), 14),
+                 bg=colors['bg_main'], fg=colors['fg_muted']
+                 ).place(relx=0.5, rely=0.5, anchor=tk.CENTER)
 
         # 新建模式
         self._build_new_frame()
         # 查看模式
-        self.view_frame = tk.Frame(self.right, bg=colors['bg_main'])
-
-        # 标题行
-        header = tk.Frame(self.view_frame, bg=colors['bg_main'])
-        header.pack(fill=tk.X, padx=16, pady=(12, 2))
-        self.practice_title = tk.Label(header, text='', font=(self.config.get('font_family'), 18, 'bold'),
-                                        bg=colors['bg_main'], fg=colors['fg_primary'])
-        self.practice_title.pack(side=tk.LEFT)
-
-        # 模式标签
-        self.mode_label = tk.Label(header, text='', font=(self.config.get('font_family'), 10),
-                                    bg=colors['bg_main'], fg=colors['fg_muted'])
-        self.mode_label.pack(side=tk.LEFT, padx=(12, 0))
-
-        # 进度条
-        self.progress_bar = ttk.Progressbar(self.view_frame, maximum=100)
-        self.progress_bar.pack(fill=tk.X, padx=16, pady=(4, 0))
-        self.progress_label = tk.Label(self.view_frame, text='', font=(self.config.get('font_family'), 9),
-                                        bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.E)
-        self.progress_label.pack(fill=tk.X, padx=16)
-
-        # 题目列表 Canvas
-        self.prob_canvas = tk.Canvas(self.view_frame, bg=colors['bg_main'], highlightthickness=0)
-        psb = ttk.Scrollbar(self.view_frame, orient=tk.VERTICAL, command=self.prob_canvas.yview)
-        self.prob_inner = tk.Frame(self.prob_canvas, bg=colors['bg_main'])
-        self._prob_win = self.prob_canvas.create_window((0, 0), window=self.prob_inner, anchor=tk.NW)
-        self.prob_canvas.configure(yscrollcommand=psb.set)
-        self.prob_canvas.bind('<Configure>', lambda e: self.prob_canvas.itemconfig(self._prob_win, width=e.width-4))
-        self.prob_inner.bind('<Configure>', lambda e: self.prob_canvas.configure(scrollregion=self.prob_canvas.bbox('all')))
-
-        # 底部按钮（查看模式）—— 必须先 pack BOTTOM 才能给 expand widgets 留出空间
-        vbar = tk.Frame(self.view_frame, bg=colors['bg_sidebar'], height=44)
-        vbar.pack(side=tk.BOTTOM, fill=tk.X)
-        vbar.pack_propagate(False)
-        tk.Button(vbar, text='删除', font=(self.config.get('font_family'), 10),
-                  bg=colors['bg_sidebar'], fg=colors['danger'], relief=tk.FLAT,
-                  cursor='hand2', command=self._delete_practice).pack(side=tk.RIGHT, padx=8)
-        tk.Button(vbar, text='智能生成', font=(self.config.get('font_family'), 10),
-                  bg=colors['bg_sidebar'], fg=colors['fg_accent'], relief=tk.FLAT,
-                  cursor='hand2', command=self._smart_gen_dialog).pack(side=tk.RIGHT, padx=8)
-        tk.Button(vbar, text='+ 添加题目', font=(self.config.get('font_family'), 10),
-                  bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
-                  cursor='hand2', command=self._add_problem_dialog).pack(side=tk.RIGHT, padx=8)
-        tk.Button(vbar, text='开始练习', font=(self.config.get('font_family'), 10, 'bold'),
-                  bg=colors['success'], fg='#ffffff', relief=tk.FLAT,
-                  padx=20, cursor='hand2', command=self._start_practice).pack(side=tk.RIGHT, padx=8)
-
-        # 然后再 pack expand widgets
-        self.prob_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8)
-        psb.pack(side=tk.RIGHT, fill=tk.Y)
-
+        self._build_view_mode()
         # 练习中模式
-        self.active_frame = tk.Frame(self.right, bg=colors['bg_main'])
-
-        # 计时器 + 进度
-        self.timer_frame = tk.Frame(self.active_frame, bg=colors['bg_sidebar'])
-        self.timer_frame.pack(fill=tk.X)
-
-        self.timer_label = tk.Label(self.timer_frame, text='', font=(self.config.get('font_family'), 28, 'bold'),
-                                     bg=colors['bg_sidebar'], fg=colors['fg_accent'])
-        self.timer_label.pack(side=tk.LEFT, padx=16, pady=8)
-
-        self.active_progress = tk.Label(self.timer_frame, text='', font=(self.config.get('font_family'), 11),
-                                         bg=colors['bg_sidebar'], fg=colors['fg_secondary'])
-        self.active_progress.pack(side=tk.RIGHT, padx=16)
-
-        # 练习中题目列表
-        self.active_canvas = tk.Canvas(self.active_frame, bg=colors['bg_main'], highlightthickness=0)
-        self.active_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8)
-        asb = ttk.Scrollbar(self.active_frame, orient=tk.VERTICAL, command=self.active_canvas.yview)
-        asb.pack(side=tk.RIGHT, fill=tk.Y)
-        self.active_canvas.configure(yscrollcommand=asb.set)
-        self.active_inner = tk.Frame(self.active_canvas, bg=colors['bg_main'])
-        self._active_win = self.active_canvas.create_window((0, 0), window=self.active_inner, anchor=tk.NW)
-        self.active_canvas.bind('<Configure>', lambda e: self.active_canvas.itemconfig(self._active_win, width=e.width-4))
-        self.active_inner.bind('<Configure>', lambda e: self.active_canvas.configure(scrollregion=self.active_canvas.bbox('all')))
-
-        # 练习中底部按钮
-        abar = tk.Frame(self.active_frame, bg=colors['bg_sidebar'], height=40)
-        abar.pack(fill=tk.X, side=tk.BOTTOM)
-        abar.pack_propagate(False)
-        tk.Button(abar, text='结束练习', font=(self.config.get('font_family'), 10, 'bold'),
-                  bg=colors['danger'], fg='#ffffff', relief=tk.FLAT,
-                  padx=20, cursor='hand2', command=self._finish_practice).pack(side=tk.RIGHT, padx=8)
+        self._build_active_mode()
 
         self._show_frame('empty')
 
@@ -232,32 +112,59 @@ class PlanModule:
         for n in ('view', 'active', 'empty', 'new'):
             if hasattr(self, f'{n}_frame'):
                 getattr(self, f'{n}_frame').pack_forget()
-        getattr(self, f'{name}_frame').pack(fill=tk.BOTH, expand=True)
+        f = getattr(self, f'{name}_frame')
+        f.pack(fill=tk.BOTH, expand=True)
+        # show/hide sub-widgets for edit mode
+        if name == 'new':
+            self.n_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self.n_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        else:
+            if hasattr(self, 'n_canvas'):
+                self.n_canvas.pack_forget()
+                self.n_scroll.pack_forget()
+
+    # ============================================================
+    # 新建模式（含智能生成）
+    # ============================================================
 
     def _build_new_frame(self):
         colors = self.config.get_colors()
         self.new_frame = tk.Frame(self.right, bg=colors['bg_main'])
+
+        # Canvas 滚动
+        self.n_canvas = tk.Canvas(self.new_frame, bg=colors['bg_main'], highlightthickness=0)
+        self.n_scroll = ttk.Scrollbar(self.new_frame, orient=tk.VERTICAL, command=self.n_canvas.yview)
+        self.n_canvas.configure(yscrollcommand=self.n_scroll.set)
+
+        self.n_inner = tk.Frame(self.n_canvas, bg=colors['bg_main'])
+        win = self.n_canvas.create_window((0, 0), window=self.n_inner, anchor=tk.NW)
+        self.n_canvas.bind('<Configure>', lambda e: self.n_canvas.itemconfig(win, width=e.width - 4))
+        self.n_inner.bind('<Configure>', lambda e: self.n_canvas.configure(scrollregion=self.n_canvas.bbox('all')))
+
         pad = 16
 
-        tk.Label(self.new_frame, text='新建完成后切换将自动保存', font=(self.config.get('font_family'), 9),
-                 bg=colors['bg_main'], fg=colors['fg_muted'], anchor=tk.W).pack(fill=tk.X, padx=pad, pady=(6, 0))
+        # 标题
+        tk.Label(self.n_inner, text='创建练习', font=(self.config.get('font_family'), 18, 'bold'),
+                 bg=colors['bg_main'], fg=colors['fg_primary']).pack(anchor=tk.W, padx=pad, pady=(12, 8))
 
-        tk.Label(self.new_frame, text='练习名称 *', font=(self.config.get('font_family'), 11),
-                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=pad, pady=(12, 0))
-        self.n_name = tk.Entry(self.new_frame, font=(self.config.get('font_family'), 13, 'bold'),
+        # 名称
+        tk.Label(self.n_inner, text='练习名称 *', font=(self.config.get('font_family'), 11),
+                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=pad)
+        self.n_name = tk.Entry(self.n_inner, font=(self.config.get('font_family'), 13, 'bold'),
                                 bg=colors['bg_input'], fg=colors['fg_primary'], relief=tk.FLAT)
         self.n_name.pack(fill=tk.X, padx=pad, pady=(2, 8), ipady=4)
 
-        tk.Label(self.new_frame, text='练习模式', font=(self.config.get('font_family'), 11),
+        # 模式
+        tk.Label(self.n_inner, text='练习模式', font=(self.config.get('font_family'), 11),
                  bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=pad)
         self.n_mode = tk.StringVar(value='free')
         for val, txt in [('free', '自由练习'), ('timed', '定时模拟')]:
-            tk.Radiobutton(self.new_frame, text=txt, variable=self.n_mode, value=val,
+            tk.Radiobutton(self.n_inner, text=txt, variable=self.n_mode, value=val,
                            font=(self.config.get('font_family'), 10),
                            bg=colors['bg_main'], fg=colors['fg_primary'],
-                           selectcolor=colors['bg_sidebar']).pack(anchor=tk.W, padx=pad+20)
+                           selectcolor=colors['bg_sidebar']).pack(anchor=tk.W, padx=pad + 20)
 
-        dur_row = tk.Frame(self.new_frame, bg=colors['bg_main'])
+        dur_row = tk.Frame(self.n_inner, bg=colors['bg_main'])
         dur_row.pack(fill=tk.X, padx=pad, pady=(8, 8))
         tk.Label(dur_row, text='时长(分钟):', font=(self.config.get('font_family'), 10),
                  bg=colors['bg_main'], fg=colors['fg_secondary']).pack(side=tk.LEFT)
@@ -266,23 +173,271 @@ class PlanModule:
         self.n_dur.pack(side=tk.LEFT, padx=4)
         self.n_dur.set('120')
 
-        tk.Label(self.new_frame, text='描述（可选）', font=(self.config.get('font_family'), 10),
-                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=pad)
-        self.n_desc = tk.Text(self.new_frame, font=(self.config.get('font_family'), 10),
-                               bg=colors['bg_input'], fg=colors['fg_primary'],
-                               relief=tk.FLAT, wrap=tk.WORD, height=3)
-        self.n_desc.pack(fill=tk.X, padx=pad, pady=(2, 8))
+        # --- 智能生成区 ---
+        sep = tk.Frame(self.n_inner, bg=colors['border'], height=1)
+        sep.pack(fill=tk.X, padx=pad, pady=(10, 6))
 
-        btn_row = tk.Frame(self.new_frame, bg=colors['bg_main'])
-        btn_row.pack(fill=tk.X, padx=pad)
-        tk.Button(btn_row, text='创建', font=(self.config.get('font_family'), 11, 'bold'),
+        tk.Label(self.n_inner, text='题目来源',
+                 font=(self.config.get('font_family'), 12, 'bold'),
+                 bg=colors['bg_main'], fg=colors['fg_primary'], anchor=tk.W).pack(fill=tk.X, padx=pad)
+
+        self.n_source = tk.StringVar(value='manual')
+        for val, txt in [('manual', '手动添加'), ('smart', '智能生成'), ('local', '本地题库')]:
+            tk.Radiobutton(self.n_inner, text=txt, variable=self.n_source, value=val,
+                           font=(self.config.get('font_family'), 10),
+                           bg=colors['bg_main'], fg=colors['fg_primary'],
+                           selectcolor=colors['bg_sidebar'],
+                           command=self._toggle_gen_panel).pack(anchor=tk.W, padx=pad + 20)
+
+        # 智能生成面板（默认隐藏）
+        self.gen_panel = tk.Frame(self.n_inner, bg=colors['bg_main'])
+
+        tk.Label(self.gen_panel, text='知识点（可多选）',
+                 font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_main'], fg=colors['fg_secondary']).pack(anchor=tk.W, padx=8, pady=(4, 2))
+
+        self.gen_tags_frame = tk.Frame(self.gen_panel, bg=colors['bg_main'])
+        self.gen_tags_frame.pack(fill=tk.X, padx=8)
+        self.gen_tag_vars = {}
+        self._build_gen_tags()
+
+        tk.Label(self.gen_panel, text='难度（可多选）',
+                 font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_main'], fg=colors['fg_secondary']).pack(anchor=tk.W, padx=8, pady=(6, 2))
+
+        self.gen_diff_frame = tk.Frame(self.gen_panel, bg=colors['bg_main'])
+        self.gen_diff_frame.pack(fill=tk.X, padx=8)
+        self.gen_diff_vars = {}
+        self._build_gen_diffs()
+
+        gen_ctrl = tk.Frame(self.gen_panel, bg=colors['bg_main'])
+        gen_ctrl.pack(fill=tk.X, padx=8, pady=(8, 4))
+
+        tk.Label(gen_ctrl, text='数量', font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_main'], fg=colors['fg_secondary']).pack(side=tk.LEFT)
+        self.gen_count = ttk.Combobox(gen_ctrl, values=['5', '8', '10', '12', '15', '20', '30'],
+                                       state='readonly', width=6)
+        self.gen_count.pack(side=tk.LEFT, padx=4)
+        self.gen_count.set('10')
+
+        tk.Label(gen_ctrl, text='来源', font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_main'], fg=colors['fg_secondary']).pack(side=tk.LEFT, padx=(12, 4))
+        self.gen_source_var = tk.StringVar(value='luogu')
+        ttk.Combobox(gen_ctrl, textvariable=self.gen_source_var,
+                      values=['luogu', 'codeforces', 'local'], state='readonly', width=12).pack(side=tk.LEFT, padx=4)
+
+        self.gen_status = tk.Label(self.gen_panel, text='',
+                                    font=(self.config.get('font_family'), 10),
+                                    bg=colors['bg_main'], fg=colors['fg_muted'])
+        self.gen_status.pack(anchor=tk.W, padx=8, pady=(4, 0))
+
+        tk.Button(self.gen_panel, text='搜索题目',
+                  font=(self.config.get('font_family'), 11, 'bold'),
                   bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
-                  padx=20, pady=6, command=self._do_create_inline).pack(side=tk.LEFT)
+                  padx=20, pady=6, cursor='hand2',
+                  command=self._do_gen_search).pack(anchor=tk.W, padx=8, pady=(8, 4))
+
+        # 结果预览列表
+        self.gen_result_label = tk.Label(self.gen_panel, text='',
+                                          font=(self.config.get('font_family'), 10),
+                                          bg=colors['bg_main'], fg=colors['fg_muted'])
+        self.gen_result_label.pack(anchor=tk.W, padx=8)
+        self.gen_result_frame = tk.Frame(self.gen_panel, bg=colors['bg_main'])
+        self.gen_result_frame.pack(fill=tk.X, padx=8)
+
+        # 描述
+        tk.Label(self.n_inner, text='描述（可选）',
+                 font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_main'], fg=colors['fg_secondary']).pack(anchor=tk.W, padx=pad, pady=(12, 2))
+        self.n_desc = tk.Text(self.n_inner, font=(self.config.get('font_family'), 10),
+                               bg=colors['bg_input'], fg=colors['fg_primary'],
+                               relief=tk.FLAT, wrap=tk.WORD, height=2)
+        self.n_desc.pack(fill=tk.X, padx=pad, pady=(0, 8))
+
+        # 创建按钮
+        tk.Button(self.n_inner, text='创建练习', font=(self.config.get('font_family'), 12, 'bold'),
+                  bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
+                  padx=30, pady=8, cursor='hand2',
+                  command=self._do_create_inline).pack(padx=pad, pady=12)
+
+    def _build_gen_tags(self):
+        """构建知识点 chip 选择器"""
+        from modules.problem_meta import get_all_subtopic_tags
+        for w in self.gen_tags_frame.winfo_children():
+            w.destroy()
+        self.gen_tag_vars.clear()
+
+        colors = self.config.get_colors()
+        all_tags = get_all_subtopic_tags()
+
+        # 按 18 大类分组，显示具体子知识点
+        row_frame = None
+        col = 0
+        col_max = 7
+        for cat in PROBLEM_CATEGORIES:
+            cat_tags = [t for t in all_tags if t['category'] == cat]
+            if not cat_tags:
+                continue
+            # 大类标题
+            if col > 0:
+                # 新行
+                row_frame = tk.Frame(self.gen_tags_frame, bg=colors['bg_main'])
+                row_frame.pack(fill=tk.X, pady=1)
+                col = 0
+
+            tk.Label(self.gen_tags_frame, text=f'▸ {cat}',
+                     font=(self.config.get('font_family'), 9, 'bold'),
+                     bg=colors['bg_main'], fg=colors['fg_accent']).pack(anchor=tk.W, padx=(4, 0))
+
+            row_frame = tk.Frame(self.gen_tags_frame, bg=colors['bg_main'])
+            row_frame.pack(fill=tk.X, pady=(0, 4))
+            col = 0
+
+            for t in cat_tags:
+                var = tk.BooleanVar()
+                self.gen_tag_vars[t['name']] = var
+
+                lbl = tk.Label(row_frame, text=t['name'],
+                               font=(self.config.get('font_family'), 9),
+                               bg=colors['bg_sidebar'], fg=colors['fg_primary'],
+                               relief=tk.FLAT, padx=6, pady=2, cursor='hand2')
+                lbl.pack(side=tk.LEFT, padx=1, pady=1)
+                lbl.bind('<Button-1>', self._make_tag_toggle(var, lbl))
+                col += 1
+                if col >= col_max:
+                    row_frame = tk.Frame(self.gen_tags_frame, bg=colors['bg_main'])
+                    row_frame.pack(fill=tk.X, pady=(0, 4))
+                    col = 0
+
+    def _make_tag_toggle(self, var, lbl):
+        def handler(e):
+            var.set(not var.get())
+            colors = self.config.get_colors()
+            if var.get():
+                lbl.configure(bg=colors['fg_accent'], fg='#ffffff')
+            else:
+                lbl.configure(bg=colors['bg_sidebar'], fg=colors['fg_primary'])
+        return handler
+
+    def _build_gen_diffs(self):
+        """构建难度 chip 选择器"""
+        for w in self.gen_diff_frame.winfo_children():
+            w.destroy()
+        self.gen_diff_vars.clear()
+
+        colors = self.config.get_colors()
+        row_frame = tk.Frame(self.gen_diff_frame, bg=colors['bg_main'])
+        row_frame.pack(fill=tk.X)
+
+        for i, d in enumerate(DIFFICULTIES):
+            var = tk.BooleanVar()
+            self.gen_diff_vars[d] = var
+
+            lbl = tk.Label(row_frame, text=d,
+                           font=(self.config.get('font_family'), 9),
+                           bg=colors['bg_sidebar'], fg=colors['fg_primary'],
+                           relief=tk.FLAT, padx=8, pady=3, cursor='hand2')
+            lbl.pack(side=tk.LEFT, padx=2, pady=2)
+            lbl.bind('<Button-1>', self._make_tag_toggle(var, lbl))
+
+    def _toggle_gen_panel(self):
+        source = self.n_source.get()
+        if source in ('smart', 'local'):
+            self.gen_panel.pack(fill=tk.X, padx=16, pady=(4, 0), before=self.n_desc.master.winfo_children()[0 if not hasattr(self, '_gen_packed') else -2])
+            self._gen_packed = True
+        else:
+            self.gen_panel.pack_forget()
+            self._gen_packed = False
+
+    # ============================================================
+    # 智能生成搜索
+    # ============================================================
+
+    def _do_gen_search(self):
+        tags = [n for n, v in self.gen_tag_vars.items() if v.get()]
+        if not tags:
+            self.gen_status.config(text='请选择至少一个知识点')
+            return
+
+        source = self.gen_source_var.get()
+        try:
+            count = int(self.gen_count.get())
+        except Exception:
+            count = 10
+
+        self.gen_status.config(text='正在搜索题目...')
+
+        def _search():
+            results = []
+            if source == 'luogu':
+                from services.fetcher import search_luogu
+                for tag in tags[:3]:
+                    r = search_luogu(keyword=tag, limit=count)
+                    results.extend(r)
+            elif source == 'codeforces':
+                from services.fetcher import search_codeforces
+                results = search_codeforces(tags=tags[:3], limit=count)
+            else:
+                from services.fetcher import search_local
+                for tag in tags[:3]:
+                    r = search_local(keyword=tag)
+                    results.extend(r)
+                results = results[:count]
+
+            # 去重
+            seen = set()
+            unique = []
+            for r in results:
+                if r.get('platform_id', '') not in seen:
+                    seen.add(r['platform_id'])
+                    unique.append(r)
+            results = unique[:count]
+
+            self.parent.after(0, lambda: self._on_gen_results(results))
+
+        threading.Thread(target=_search, daemon=True).start()
+
+    def _on_gen_results(self, results):
+        if results:
+            self._gen_results = results
+            self.gen_status.config(text=f'找到 {len(results)} 道题目')
+            self.gen_result_label.config(text='创建练习时将自动加入以下题目:')
+
+            for w in self.gen_result_frame.winfo_children():
+                w.destroy()
+            colors = self.config.get_colors()
+            for p in results:
+                rf = tk.Frame(self.gen_result_frame, bg=colors['bg_main'])
+                rf.pack(fill=tk.X, pady=1)
+                tk.Label(rf, text=f'{p.get("platform_id","")[:12]}',
+                         font=(self.config.get('font_family'), 9),
+                         bg=colors['bg_main'], fg=colors['fg_muted']).pack(side=tk.LEFT, padx=(0, 8))
+                tk.Label(rf, text=p['title'][:30],
+                         font=(self.config.get('font_family'), 10),
+                         bg=colors['bg_main'], fg=colors['fg_primary'], anchor=tk.W
+                         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+                tk.Label(rf, text=p.get('difficulty', '')[:10],
+                         font=(self.config.get('font_family'), 9),
+                         bg=colors['bg_main'], fg=colors['fg_muted']).pack(side=tk.LEFT, padx=4)
+        else:
+            self.gen_status.config(text='未找到题目，请尝试其他关键词')
+
+    # ============================================================
+    # 创建练习
+    # ============================================================
 
     def _start_new(self):
         self.n_name.delete(0, tk.END)
         self.n_mode.set('free')
         self.n_dur.set('120')
+        self.n_source.set('manual')
+        self._gen_results = []
+        self.gen_panel.pack_forget()
+        self._gen_packed = False
+        self.gen_status.config(text='')
+        self.gen_result_label.config(text='')
+        for w in self.gen_result_frame.winfo_children():
+            w.destroy()
         self.n_desc.delete('1.0', tk.END)
         self._show_frame('new')
 
@@ -294,168 +449,34 @@ class PlanModule:
         mode = self.n_mode.get()
         dur = int(self.n_dur.get()) if mode == 'timed' else 0
         desc = self.n_desc.get('1.0', tk.END).strip()
+
         try:
             conn = get_connection()
             cursor = conn.execute(
                 "INSERT INTO practice_plans (name, description, practice_mode, duration) VALUES (?,?,?,?)",
                 (name, desc, mode, dur))
             new_id = cursor.lastrowid
+
+            # 插入智能生成的题目
+            if self._gen_results:
+                for i, p in enumerate(self._gen_results):
+                    conn.execute(
+                        """INSERT INTO plan_problems
+                           (plan_id, platform, platform_id, title, difficulty, sort_order)
+                           VALUES (?, ?, ?, ?, ?, ?)""",
+                        (new_id, p.get('platform', ''), p.get('platform_id', ''),
+                         p.get('title', ''), p.get('difficulty', ''), i + 1))
+
             conn.commit()
             conn.close()
+
             self._refresh_list()
-            # 自动选中新练习并切换到查看模式
             self._current_id = new_id
             self._show_frame('view')
             self._load_view()
             self.app.set_status(f'练习「{name}」已创建')
         except Exception as e:
             self.app.set_status(f'创建失败: {e}')
-
-    # ============================================================
-    # 空状态内容：签到 + 赛事
-    # ============================================================
-
-    def _build_empty_content(self):
-        colors = self.config.get_colors()
-        pad = 16
-
-        # 顶部标题
-        tk.Label(self.empty_frame, text='练习模块',
-                 font=(self.config.get('font_family'), 20, 'bold'),
-                 bg=colors['bg_main'], fg=colors['fg_primary']).pack(anchor=tk.W, padx=pad, pady=(16, 8))
-
-        tk.Label(self.empty_frame, text='点击「+ 新建练习」创建你的第一个练习，或从下方查看近期赛事。',
-                 font=(self.config.get('font_family'), 10),
-                 bg=colors['bg_main'], fg=colors['fg_muted']).pack(anchor=tk.W, padx=pad)
-
-        # 主体内容（左右）
-        body = tk.Frame(self.empty_frame, bg=colors['bg_main'])
-        body.pack(fill=tk.BOTH, expand=True, padx=pad, pady=12)
-
-        # 左：每日签到
-        self._build_checkin_panel(body)
-
-        # 右：赛事日历
-        self._build_contests_panel(body)
-
-    def _build_checkin_panel(self, parent):
-        colors = self.config.get_colors()
-        from datetime import date
-
-        panel = tk.Frame(parent, bg=colors['bg_sidebar'], bd=1)
-        panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
-
-        tk.Label(panel, text='每日签到', font=(self.config.get('font_family'), 13, 'bold'),
-                 bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(anchor=tk.W, padx=14, pady=(12, 8))
-
-        # 显示最近签到
-        streak = self._get_streak()
-        last_date = self.config.get('last_checkin_date', '')
-        today = str(date.today())
-
-        info_row = tk.Frame(panel, bg=colors['bg_sidebar'])
-        info_row.pack(fill=tk.X, padx=14)
-        tk.Label(info_row, text=f'连续签到', font=(self.config.get('font_family'), 10),
-                 bg=colors['bg_sidebar'], fg=colors['fg_secondary']).pack(side=tk.LEFT)
-        tk.Label(info_row, text=f'{streak} 天', font=(self.config.get('font_family'), 14, 'bold'),
-                 bg=colors['bg_sidebar'], fg=colors['fg_accent']).pack(side=tk.LEFT, padx=4)
-
-        tk.Label(panel, text=f'上次签到: {last_date or "尚未签到"}',
-                 font=(self.config.get('font_family'), 9),
-                 bg=colors['bg_sidebar'], fg=colors['fg_muted']).pack(anchor=tk.W, padx=14, pady=(2, 8))
-
-        # 签到按钮
-        self.checkin_btn = tk.Button(panel, text='', font=(self.config.get('font_family'), 11, 'bold'),
-                                       bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
-                                       padx=24, pady=8, cursor='hand2',
-                                       command=self._do_checkin)
-        self.checkin_btn.pack(padx=14, pady=(0, 14))
-        self._update_checkin_btn(today)
-
-    def _update_checkin_btn(self, today: str):
-        last_date = self.config.get('last_checkin_date', '')
-        if last_date == today:
-            self.checkin_btn.config(text='✓ 今日已签到', state=tk.DISABLED,
-                                     bg=self.config.get_colors()['bg_sidebar'])
-        else:
-            self.checkin_btn.config(text='📅 点击签到', state=tk.NORMAL)
-
-    def _do_checkin(self):
-        from datetime import date, timedelta
-        colors = self.config.get_colors()
-        today = str(date.today())
-        last = self.config.get('last_checkin_date', '')
-
-        if last == today:
-            self.app.set_status('今日已签到')
-            return
-
-        # 更新连续天数
-        if last:
-            try:
-                last_d = date.fromisoformat(last)
-                if (date.today() - last_d).days == 1:
-                    streak = self.config.get('checkin_streak', 0) + 1
-                else:
-                    streak = 1  # 中断了，重新开始
-            except Exception:
-                streak = 1
-        else:
-            streak = 1
-
-        self.config.set('last_checkin_date', today)
-        self.config.set('checkin_streak', streak)
-        self._update_checkin_btn(today)
-        self.app.set_status(f'✓ 签到成功！连续 {streak} 天')
-
-    def _get_streak(self):
-        return self.config.get('checkin_streak', 0)
-
-    def _build_contests_panel(self, parent):
-        colors = self.config.get_colors()
-
-        panel = tk.Frame(parent, bg=colors['bg_sidebar'], bd=1)
-        panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
-
-        tk.Label(panel, text='近期赛事', font=(self.config.get('font_family'), 13, 'bold'),
-                 bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(anchor=tk.W, padx=14, pady=(12, 4))
-
-        # 可滚动
-        canvas = tk.Canvas(panel, bg=colors['bg_sidebar'], highlightthickness=0)
-        scroll = ttk.Scrollbar(panel, orient=tk.VERTICAL, command=canvas.yview)
-        canvas.configure(yscrollcommand=scroll.set)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=14, pady=(0, 8))
-        scroll.pack(side=tk.RIGHT, fill=tk.Y, pady=(0, 8))
-        inner = tk.Frame(canvas, bg=colors['bg_sidebar'])
-        win = canvas.create_window((0, 0), window=inner, anchor=tk.NW)
-        canvas.bind('<Configure>', lambda e: canvas.itemconfig(win, width=e.width-4))
-        inner.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
-
-        contests = get_upcoming_contests()
-        from datetime import date
-        today = date.today()
-
-        for c in contests:
-            if c['date'] < today:
-                continue
-            days_left = (c['date'] - today).days
-            rf = tk.Frame(inner, bg=colors['bg_sidebar'])
-            rf.pack(fill=tk.X, pady=2)
-            # 日期
-            tk.Label(rf, text=c['date'].strftime('%m-%d'),
-                     font=(self.config.get('font_family'), 10, 'bold'),
-                     bg=colors['bg_sidebar'],
-                     fg=colors['fg_accent' if days_left <= 7 else 'fg_secondary']
-                     ).pack(side=tk.LEFT, padx=(0, 8))
-            # 名称
-            tk.Label(rf, text=c['name'], font=(self.config.get('font_family'), 10),
-                     bg=colors['bg_sidebar'], fg=colors['fg_primary']
-                     ).pack(side=tk.LEFT, fill=tk.X, expand=True)
-            # 倒计时
-            tk.Label(rf, text=f'{days_left} 天', font=(self.config.get('font_family'), 9),
-                     bg=colors['bg_sidebar'],
-                     fg=colors['danger' if days_left <= 7 else 'fg_muted']
-                     ).pack(side=tk.RIGHT)
 
     # ============================================================
     # 练习列表
@@ -494,6 +515,51 @@ class PlanModule:
     # 查看模式
     # ============================================================
 
+    def _build_view_mode(self):
+        colors = self.config.get_colors()
+        self.view_frame = tk.Frame(self.right, bg=colors['bg_main'])
+
+        header = tk.Frame(self.view_frame, bg=colors['bg_main'])
+        header.pack(fill=tk.X, padx=16, pady=(12, 2))
+        self.practice_title = tk.Label(header, text='', font=(self.config.get('font_family'), 18, 'bold'),
+                                        bg=colors['bg_main'], fg=colors['fg_primary'])
+        self.practice_title.pack(side=tk.LEFT)
+        self.mode_label = tk.Label(header, text='', font=(self.config.get('font_family'), 10),
+                                    bg=colors['bg_main'], fg=colors['fg_muted'])
+        self.mode_label.pack(side=tk.LEFT, padx=(12, 0))
+
+        self.progress_bar = ttk.Progressbar(self.view_frame, maximum=100)
+        self.progress_bar.pack(fill=tk.X, padx=16, pady=(4, 0))
+        self.progress_label = tk.Label(self.view_frame, text='', font=(self.config.get('font_family'), 9),
+                                        bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.E)
+        self.progress_label.pack(fill=tk.X, padx=16)
+
+        # 底部按钮 — 先 pack 确保不被 expand widget 挤掉
+        vbar = tk.Frame(self.view_frame, bg=colors['bg_sidebar'], height=44)
+        vbar.pack(side=tk.BOTTOM, fill=tk.X)
+        vbar.pack_propagate(False)
+        tk.Button(vbar, text='删除', font=(self.config.get('font_family'), 10),
+                  bg=colors['bg_sidebar'], fg=colors['danger'], relief=tk.FLAT,
+                  cursor='hand2', command=self._delete_practice).pack(side=tk.RIGHT, padx=8)
+        tk.Button(vbar, text='+ 添加题目', font=(self.config.get('font_family'), 10),
+                  bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
+                  cursor='hand2', command=self._add_problem_dialog).pack(side=tk.RIGHT, padx=8)
+        tk.Button(vbar, text='开始练习', font=(self.config.get('font_family'), 10, 'bold'),
+                  bg=colors['success'], fg='#ffffff', relief=tk.FLAT,
+                  padx=20, cursor='hand2', command=self._start_practice).pack(side=tk.RIGHT, padx=8)
+
+        # 题目列表
+        self.prob_canvas = tk.Canvas(self.view_frame, bg=colors['bg_main'], highlightthickness=0)
+        psb = ttk.Scrollbar(self.view_frame, orient=tk.VERTICAL, command=self.prob_canvas.yview)
+        self.prob_inner = tk.Frame(self.prob_canvas, bg=colors['bg_main'])
+        self._prob_win = self.prob_canvas.create_window((0, 0), window=self.prob_inner, anchor=tk.NW)
+        self.prob_canvas.configure(yscrollcommand=psb.set)
+        self.prob_canvas.bind('<Configure>', lambda e: self.prob_canvas.itemconfig(self._prob_win, width=e.width-4))
+        self.prob_inner.bind('<Configure>', lambda e: self.prob_canvas.configure(scrollregion=self.prob_canvas.bbox('all')))
+
+        self.prob_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8)
+        psb.pack(side=tk.RIGHT, fill=tk.Y)
+
     def _load_view(self):
         if not self._current_id:
             return
@@ -522,30 +588,22 @@ class PlanModule:
             self.progress_bar['value'] = pct
             self.progress_label.config(text=f'{done}/{total} 已完成' if total > 0 else '暂无题目')
 
-            # 题目列表
             for w in self.prob_inner.winfo_children():
                 w.destroy()
-
             for i, item in enumerate(items):
                 item = dict(item)
                 rf = tk.Frame(self.prob_inner, bg=colors['bg_main'])
                 rf.pack(fill=tk.X, padx=12, pady=1)
 
-                sym = STATUS_SYMBOLS.get(item['status'], '○')
-                title = item['title'] or f'题目 #{i+1}'
-                platform = item.get('platform', '')
-
                 tk.Label(rf, text=f'{i+1}.', font=(self.config.get('font_family'), 10),
                          bg=colors['bg_main'], fg=colors['fg_muted']).pack(side=tk.LEFT, padx=(0, 8))
-
-                tk.Label(rf, text=title, font=(self.config.get('font_family'), 11),
+                tk.Label(rf, text=item['title'] or f'题目 #{i+1}',
+                         font=(self.config.get('font_family'), 11),
                          bg=colors['bg_main'], fg=colors['fg_primary'], anchor=tk.W
                          ).pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-                if platform:
-                    tk.Label(rf, text=f'[{platform}]', font=(self.config.get('font_family'), 9),
+                if item.get('platform'):
+                    tk.Label(rf, text=f'[{item["platform"]}]', font=(self.config.get('font_family'), 9),
                              bg=colors['bg_main'], fg=colors['fg_muted']).pack(side=tk.LEFT, padx=4)
-
                 del_btn = tk.Label(rf, text='×', font=(self.config.get('font_family'), 12),
                                     bg=colors['bg_main'], fg=colors['fg_muted'],
                                     cursor='hand2', padx=4)
@@ -553,231 +611,11 @@ class PlanModule:
                 del_btn.bind('<Button-1>', lambda e, it=item: self._remove_item(it['id']))
                 del_btn.bind('<Enter>', lambda e, b=del_btn: b.configure(fg=colors['danger']))
                 del_btn.bind('<Leave>', lambda e, b=del_btn: b.configure(fg=colors['fg_muted']))
-
         except Exception as e:
             self.app.set_status(f'加载失败: {e}')
 
     # ============================================================
-    # 智能生成题单
-    # ============================================================
-
-    def _smart_gen_dialog(self):
-        if not self._current_id:
-            return
-        from modules.problem_meta import get_all_subtopic_tags, PROBLEM_CATEGORIES
-
-        dialog = tk.Toplevel(self.parent)
-        dialog.title('题单生成器')
-        dialog.geometry('720x720')
-        dialog.transient(self.parent)
-        dialog.resizable(False, False)
-        colors = self.config.get_colors()
-        dialog.configure(bg=colors['bg_main'])
-
-        # 顶部 Tabs（仅展示，单页）
-        tabs = tk.Frame(dialog, bg=colors['bg_main'])
-        tabs.pack(fill=tk.X, padx=20, pady=(16, 4))
-
-        active_tab = tk.Label(tabs, text='✦ 题单生成器', font=(self.config.get('font_family'), 13, 'bold'),
-                               bg=colors['bg_main'], fg=colors['fg_accent'])
-        active_tab.pack(side=tk.LEFT, padx=(0, 20))
-        for txt in ['按标签归类', '已保存']:
-            tk.Label(tabs, text=txt, font=(self.config.get('font_family'), 11),
-                     bg=colors['bg_main'], fg=colors['fg_muted']).pack(side=tk.LEFT, padx=(0, 20))
-
-        # 标题
-        tk.Label(dialog, text='题单生成器', font=(self.config.get('font_family'), 18, 'bold'),
-                 bg=colors['bg_main'], fg=colors['fg_primary']).pack(anchor=tk.W, padx=20, pady=(8, 8))
-
-        # 知识点区
-        tk.Label(dialog, text='知识点（可多选）', font=(self.config.get('font_family'), 11),
-                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=20)
-
-        tag_frame = tk.Frame(dialog, bg=colors['bg_main'])
-        tag_frame.pack(fill=tk.X, padx=20, pady=(4, 8))
-
-        all_tags = get_all_subtopic_tags()
-
-        # 按 18 大类分组展示
-        row_frame = None
-        col_count = 9
-        tag_vars = {}
-        widget_idx = 0
-        for cat in PROBLEM_CATEGORIES:
-            cat_tags = [t for t in all_tags if t['category'] == cat]
-            if not cat_tags:
-                continue
-            if widget_idx % col_count == 0:
-                row_frame = tk.Frame(tag_frame, bg=colors['bg_main'])
-                row_frame.pack(fill=tk.X)
-            tag_lbl = tk.Label(row_frame, text=cat,
-                               font=(self.config.get('font_family'), 10, 'bold'),
-                               bg=colors['bg_tag'], fg=colors['fg_link'],
-                               relief=tk.FLAT, padx=10, pady=3, cursor='hand2')
-            tag_lbl.pack(side=tk.LEFT, padx=2, pady=2)
-            var = tk.BooleanVar()
-            tag_vars[cat] = var
-
-            def _toggle(c=cat, v=var, w=tag_lbl):
-                v.set(not v.get())
-                w.configure(fg='#ffffff' if v.get() else colors['fg_link'],
-                            bg=colors['fg_accent'] if v.get() else colors['bg_tag'])
-
-            tag_lbl.bind('<Button-1>', lambda e: _toggle())
-            widget_idx += 1
-
-        # 难度范围
-        tk.Label(dialog, text='难度范围', font=(self.config.get('font_family'), 11),
-                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=20, pady=(8, 0))
-
-        diff_frame = tk.Frame(dialog, bg=colors['bg_main'])
-        diff_frame.pack(fill=tk.X, padx=20, pady=(4, 8))
-
-        DIFF_OPTS = ['入门', '普及−', '普及', '普及+/提高−', '提高', '提高+/省选−', '省选/NOI−', 'NOI/NOI+/CTS']
-        diff_vars = {}
-        for i, d in enumerate(DIFF_OPTS):
-            var = tk.BooleanVar(value=d in ('普及+/提高−',))
-            diff_vars[d] = var
-            lbl = tk.Label(diff_frame, text=d, font=(self.config.get('font_family'), 9),
-                           bg=colors['bg_sidebar'], fg=colors['fg_primary'],
-                           relief=tk.FLAT, padx=8, pady=4, cursor='hand2')
-            lbl.pack(side=tk.LEFT, padx=2, pady=2)
-
-            def _toggle_diff(d=d, v=var, w=lbl):
-                v.set(not v.get())
-                w.configure(fg='#ffffff' if v.get() else colors['fg_primary'],
-                            bg=colors['fg_accent'] if v.get() else colors['bg_sidebar'])
-
-            lbl.bind('<Button-1>', lambda e: _toggle_diff())
-            if i == 2 and len(DIFF_OPTS) > 4:
-                diff_frame2 = tk.Frame(dialog, bg=colors['bg_main'])
-                diff_frame2.pack(fill=tk.X, padx=20, pady=(0, 8))
-                diff_frame = diff_frame2
-
-        # 题目数
-        count_row = tk.Frame(dialog, bg=colors['bg_main'])
-        count_row.pack(fill=tk.X, padx=20, pady=(4, 4))
-        tk.Label(count_row, text='题目数', font=(self.config.get('font_family'), 11),
-                 bg=colors['bg_main'], fg=colors['fg_secondary']).pack(side=tk.LEFT)
-        count_var = tk.StringVar(value='12 题')
-        ttk.Combobox(count_row, textvariable=count_var,
-                      values=['5 题', '8 题', '10 题', '12 题', '15 题', '20 题', '30 题'],
-                      state='readonly', width=10).pack(side=tk.LEFT, padx=8)
-
-        # 来源
-        tk.Label(count_row, text='来源', font=(self.config.get('font_family'), 11),
-                 bg=colors['bg_main'], fg=colors['fg_secondary']).pack(side=tk.LEFT, padx=(20, 4))
-        source_var = tk.StringVar(value='洛谷')
-        ttk.Combobox(count_row, textvariable=source_var,
-                      values=['洛谷', 'Codeforces', '本地题库'],
-                      state='readonly', width=14).pack(side=tk.LEFT, padx=4)
-
-        # 结果区（占位）
-        result_label = tk.Label(dialog, text='', font=(self.config.get('font_family'), 10),
-                                 bg=colors['bg_main'], fg=colors['fg_muted'])
-        result_label.pack(anchor=tk.W, padx=20)
-
-        # 生成按钮
-        btn_row = tk.Frame(dialog, bg=colors['bg_main'])
-        btn_row.pack(fill=tk.X, padx=20, pady=(16, 8))
-        tk.Button(btn_row, text='生成题单', font=(self.config.get('font_family'), 12, 'bold'),
-                  bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
-                  padx=40, pady=8, cursor='hand2',
-                  command=lambda: self._do_smart_search(
-                      [n for n, v in tag_vars.items() if v.get()],
-                      self._source_map(source_var.get()),
-                      self._count_map(count_var.get()),
-                      result_label, dialog)
-                  ).pack(fill=tk.X)
-
-        # 已选标签显示
-        if tag_vars:
-            pass
-
-    def _source_map(self, txt):
-        m = {'洛谷': 'luogu', 'Codeforces': 'codeforces', '本地题库': 'local'}
-        return m.get(txt, 'luogu')
-
-    def _count_map(self, txt):
-        try:
-            return int(txt.replace(' 题', ''))
-        except Exception:
-            return 10
-
-    def _do_smart_search(self, tags, source, count, result_label, dialog):
-        """搜索题目并将结果加入当前练习"""
-        if not tags:
-            self.app.set_status('请先选择至少一个知识点')
-            result_label.config(text='请选择知识点')
-            return
-
-        result_label.config(text='正在搜索题目...')
-
-        def _search():
-            results = []
-            if source == 'luogu':
-                from services.fetcher import search_luogu
-                for tag in tags[:3]:
-                    r = search_luogu(keyword=tag, limit=count)
-                    results.extend(r)
-                seen = set()
-                unique = []
-                for r in results:
-                    if r['platform_id'] not in seen:
-                        seen.add(r['platform_id'])
-                        unique.append(r)
-                results = unique[:count]
-            elif source == 'codeforces':
-                from services.fetcher import search_codeforces
-                results = search_codeforces(tags=tags[:3], limit=count)
-            else:
-                from services.fetcher import search_local
-                for tag in tags[:3]:
-                    r = search_local(keyword=tag)
-                    results.extend(r)
-                results = results[:count]
-
-            self.parent.after(0, lambda: self._on_search_done(results, dialog, result_label))
-
-        threading.Thread(target=_search, daemon=True).start()
-
-    def _on_search_done(self, results, dialog, result_label):
-        if results:
-            result_label.config(text=f'找到 {len(results)} 道题目，已加入练习')
-            self._add_selected_to_practice(results, dialog)
-        else:
-            result_label.config(text='未找到题目，请尝试其他知识点或来源')
-        dialog.after(2500, dialog.destroy)
-
-    def _add_selected_to_practice(self, problems, dialog):
-        if not problems:
-            return
-        try:
-            conn = get_connection()
-            max_order = conn.execute(
-                "SELECT MAX(sort_order) as m FROM plan_problems WHERE plan_id=?",
-                (self._current_id,)).fetchone()
-            next_order = (max_order['m'] or 0) + 1
-
-            for p in problems:
-                conn.execute(
-                    """INSERT INTO plan_problems
-                       (plan_id, platform, platform_id, title, difficulty, sort_order)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (self._current_id, p.get('platform', ''),
-                     p.get('platform_id', ''), p.get('title', ''),
-                     p.get('difficulty', ''), next_order))
-                next_order += 1
-            conn.commit()
-            conn.close()
-            dialog.destroy()
-            self._load_view()
-            self.app.set_status(f'已添加 {len(problems)} 道题目')
-        except Exception as e:
-            self.app.set_status(f'添加失败: {e}')
-
-    # ============================================================
-    # 手动添加题目
+    # 添加题目对话框
     # ============================================================
 
     def _add_problem_dialog(self):
@@ -814,8 +652,7 @@ class PlanModule:
                   relief=tk.FLAT, padx=16, pady=6, command=dialog.destroy).pack(side=tk.RIGHT, padx=(8, 0))
         tk.Button(btn_row, text='添加', font=(self.config.get('font_family'), 11),
                   bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT, padx=16, pady=6,
-                  command=lambda: self._add_manual(title_var.get().strip(), dialog)
-                  ).pack(side=tk.RIGHT)
+                  command=lambda: self._add_manual(title_var.get().strip(), dialog)).pack(side=tk.RIGHT)
 
     def _add_manual(self, title, dialog):
         if not title:
@@ -823,12 +660,10 @@ class PlanModule:
             return
         try:
             conn = get_connection()
-            max_order = conn.execute(
-                "SELECT MAX(sort_order) FROM plan_problems WHERE plan_id=?",
-                (self._current_id,)).fetchone()
-            conn.execute(
-                "INSERT INTO plan_problems (plan_id, title, sort_order) VALUES (?, ?, ?)",
-                (self._current_id, title, (max_order[0] or 0) + 1))
+            max_order = conn.execute("SELECT MAX(sort_order) FROM plan_problems WHERE plan_id=?",
+                                      (self._current_id,)).fetchone()
+            conn.execute("INSERT INTO plan_problems (plan_id, title, sort_order) VALUES (?,?,?)",
+                          (self._current_id, title, (max_order[0] or 0) + 1))
             conn.commit()
             conn.close()
             dialog.destroy()
@@ -837,8 +672,41 @@ class PlanModule:
             self.app.set_status(f'添加失败: {e}')
 
     # ============================================================
-    # 练习模式
+    # 练习中模式
     # ============================================================
+
+    def _build_active_mode(self):
+        colors = self.config.get_colors()
+        self.active_frame = tk.Frame(self.right, bg=colors['bg_main'])
+
+        self.timer_frame = tk.Frame(self.active_frame, bg=colors['bg_sidebar'])
+        self.timer_frame.pack(fill=tk.X)
+        self.timer_label = tk.Label(self.timer_frame, text='', font=(self.config.get('font_family'), 28, 'bold'),
+                                     bg=colors['bg_sidebar'], fg=colors['fg_accent'])
+        self.timer_label.pack(side=tk.LEFT, padx=16, pady=8)
+        self.active_progress = tk.Label(self.timer_frame, text='', font=(self.config.get('font_family'), 11),
+                                         bg=colors['bg_sidebar'], fg=colors['fg_secondary'])
+        self.active_progress.pack(side=tk.RIGHT, padx=16)
+
+        # 底部按钮 — 先 pack
+        abar = tk.Frame(self.active_frame, bg=colors['bg_sidebar'], height=44)
+        abar.pack(side=tk.BOTTOM, fill=tk.X)
+        abar.pack_propagate(False)
+        tk.Button(abar, text='结束练习', font=(self.config.get('font_family'), 10, 'bold'),
+                  bg=colors['danger'], fg='#ffffff', relief=tk.FLAT,
+                  padx=20, cursor='hand2', command=self._finish_practice).pack(side=tk.RIGHT, padx=8)
+
+        # 题目列表
+        self.active_canvas = tk.Canvas(self.active_frame, bg=colors['bg_main'], highlightthickness=0)
+        asb = ttk.Scrollbar(self.active_frame, orient=tk.VERTICAL, command=self.active_canvas.yview)
+        self.active_inner = tk.Frame(self.active_canvas, bg=colors['bg_main'])
+        self._active_win = self.active_canvas.create_window((0, 0), window=self.active_inner, anchor=tk.NW)
+        self.active_canvas.configure(yscrollcommand=asb.set)
+        self.active_canvas.bind('<Configure>', lambda e: self.active_canvas.itemconfig(self._active_win, width=e.width-4))
+        self.active_inner.bind('<Configure>', lambda e: self.active_canvas.configure(scrollregion=self.active_canvas.bbox('all')))
+
+        self.active_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8)
+        asb.pack(side=tk.RIGHT, fill=tk.Y)
 
     def _start_practice(self):
         if not self._current_id:
@@ -850,20 +718,18 @@ class PlanModule:
                 conn.close()
                 return
             plan = dict(plan)
-
             items = conn.execute(
                 "SELECT * FROM plan_problems WHERE plan_id=? ORDER BY sort_order, id",
                 (self._current_id,)).fetchall()
             conn.close()
 
             if not items:
-                self.app.set_status('练习中没有题目')
+                self.app.set_status('练习中没有题目，请先添加题目')
                 return
 
             self._show_frame('active')
             self._active_items = [dict(it) for it in items]
 
-            # 计时器
             if plan.get('practice_mode') == 'timed' and plan.get('duration', 0) > 0:
                 self._remaining_sec = plan['duration'] * 60
                 self._update_timer()
@@ -906,7 +772,6 @@ class PlanModule:
             rf.pack(fill=tk.X, padx=16, pady=4)
 
             sym = STATUS_SYMBOLS.get(item['status'], '○')
-            # 大按钮：切换状态
             btn = tk.Label(rf, text=sym, font=(self.config.get('font_family'), 20),
                            bg=colors['bg_main'],
                            fg=colors['success'] if item['status'] == 'done' else colors['fg_muted'],
@@ -972,6 +837,9 @@ class PlanModule:
 
     def on_new(self):
         self._start_new()
+
+    def on_before_leave(self):
+        pass
 
     def apply_theme(self):
         for w in self.parent.winfo_children():

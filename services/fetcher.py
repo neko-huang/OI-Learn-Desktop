@@ -11,39 +11,35 @@ _cache = {}
 
 
 def search_luogu(keyword: str = '', difficulty: str = '', page: int = 1, limit: int = 20):
-    """
-    从洛谷搜索题目
-    参数：
-        keyword: 搜索关键词（算法标签名）
-        difficulty: 难度筛选（如 "入门"）
-        page: 页码
-        limit: 每页数量
-    """
+    """从洛谷搜索题目"""
     cache_key = f'{keyword}#{difficulty}#{page}'
     if cache_key in _cache:
         return _cache[cache_key]
 
     try:
         url = 'https://www.luogu.com.cn/problem/list'
-        params = {
-            'page': page,
-            '_contentOnly': '1',
-        }
+        params = {'page': page, '_contentOnly': '1'}
         if keyword:
             params['keyword'] = keyword
         if difficulty:
             params['difficulty'] = difficulty
 
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'zh-CN,zh;q=0.9',
         }
-        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        resp = requests.get(url, params=params, headers=headers, timeout=15)
         data = resp.json()
 
         if data.get('code') != 200:
+            print(f'[洛谷] API 返回 code={data.get("code")}')
             return []
 
         result = data.get('currentData', {}).get('problems', {}).get('result', [])
+        if not result:
+            print(f'[洛谷] 关键词 "{keyword}" 无搜索结果')
+            return []
 
         problems = []
         for p in result[:limit]:
@@ -59,7 +55,14 @@ def search_luogu(keyword: str = '', difficulty: str = '', page: int = 1, limit: 
         _cache[cache_key] = problems
         return problems
 
-    except Exception:
+    except requests.exceptions.Timeout:
+        print(f'[洛谷] 请求超时')
+        return []
+    except requests.exceptions.ConnectionError:
+        print(f'[洛谷] 网络连接失败')
+        return []
+    except Exception as e:
+        print(f'[洛谷] 错误: {e}')
         return []
 
 
