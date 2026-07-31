@@ -59,7 +59,12 @@ class HomeModule:
         main = tk.Frame(self.parent, bg=colors['bg_main'])
         main.pack(fill=tk.BOTH, expand=True, padx=12, pady=8)
 
-        self._build_checkin(main)
+        # 左栏：签到 + 学习规划
+        left_col = tk.Frame(main, bg=colors['bg_main'])
+        left_col.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
+
+        self._build_checkin(left_col)
+        self._build_study_plan(left_col)
         self._build_contests(main)
         self._build_notes(main)
 
@@ -70,7 +75,7 @@ class HomeModule:
     def _build_checkin(self, parent):
         colors = self.config.get_colors()
         panel = tk.Frame(parent, bg=colors['bg_sidebar'])
-        panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
+        panel.pack(fill=tk.X)  # 不扩展，给学习规划留空间
 
         # 标题行
         header = tk.Frame(panel, bg=colors['bg_sidebar'])
@@ -187,6 +192,133 @@ class HomeModule:
             lbl = tk.Label(parent, text=str(d), font=(self.config.get('font_family'), 10),
                             bg=bg, fg=fg, width=2, padx=6, pady=3)
             lbl.grid(row=row, column=col, padx=1, pady=1)
+
+    # ============================================================
+    # 学习规划面板
+    # ============================================================
+
+    def _build_study_plan(self, parent):
+        colors = self.config.get_colors()
+        panel = tk.Frame(parent, bg=colors['bg_sidebar'])
+        panel.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
+
+        header = tk.Frame(panel, bg=colors['bg_sidebar'])
+        header.pack(fill=tk.X, padx=14, pady=(10, 6))
+        tk.Label(header, text='学习规划',
+                 font=(self.config.get('font_family'), 13, 'bold'),
+                 bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(side=tk.LEFT)
+
+        # 加载规划数据
+        import json
+        raw = self.config.get('study_plan', '[]')
+        try:
+            self._plans = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            self._plans = []
+
+        # 规划列表
+        canvas = tk.Canvas(panel, bg=colors['bg_sidebar'], highlightthickness=0)
+        scroll = ttk.Scrollbar(panel, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=(0, 4))
+        scroll.pack(side=tk.RIGHT, fill=tk.Y, pady=(0, 4))
+
+        self._plan_inner = tk.Frame(canvas, bg=colors['bg_sidebar'])
+        win = canvas.create_window((0, 0), window=self._plan_inner, anchor=tk.NW)
+        canvas.bind('<Configure>', lambda e: canvas.itemconfig(win, width=e.width-4))
+        self._plan_inner.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
+
+        self._refresh_study_plan()
+
+        # 按钮
+        btn_frame = tk.Frame(panel, bg=colors['bg_sidebar'])
+        btn_frame.pack(fill=tk.X, padx=10, pady=(0, 8))
+        tk.Button(btn_frame, text='+ 添加计划',
+                  font=(self.config.get('font_family'), 10),
+                  bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
+                  padx=12, pady=4, cursor='hand2',
+                  command=self._add_study_plan).pack(side=tk.LEFT)
+
+    def _save_study_plans(self):
+        import json
+        self.config.set('study_plan', json.dumps(self._plans, ensure_ascii=False))
+
+    def _refresh_study_plan(self):
+        colors = self.config.get_colors()
+        for w in self._plan_inner.winfo_children():
+            w.destroy()
+
+        for i, plan in enumerate(self._plans):
+            rf = tk.Frame(self._plan_inner, bg=colors['bg_sidebar'])
+            rf.pack(fill=tk.X, pady=1)
+
+            done = plan.get('done', False)
+            sym = '●' if done else '○'
+            fg = colors['success'] if done else colors['fg_muted']
+
+            check_btn = tk.Label(rf, text=sym, font=(self.config.get('font_family'), 12),
+                                 bg=colors['bg_sidebar'], fg=fg, cursor='hand2', padx=4)
+            check_btn.pack(side=tk.LEFT)
+            check_btn.bind('<Button-1>', lambda e, idx=i: self._toggle_plan(idx))
+
+            tk.Label(rf, text=plan['title'], font=(self.config.get('font_family'), 10),
+                     bg=colors['bg_sidebar'],
+                     fg=colors['fg_primary' if not done else 'fg_muted']
+                     ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
+
+            del_btn = tk.Label(rf, text='×', font=(self.config.get('font_family'), 11),
+                               bg=colors['bg_sidebar'], fg=colors['fg_muted'],
+                               cursor='hand2', padx=4)
+            del_btn.pack(side=tk.RIGHT)
+            del_btn.bind('<Button-1>', lambda e, idx=i: self._delete_plan(idx))
+
+    def _add_study_plan(self):
+        dialog = tk.Toplevel(self.parent)
+        dialog.title('添加学习计划')
+        dialog.geometry('400x200')
+        dialog.transient(self.parent)
+        colors = self.config.get_colors()
+        dialog.configure(bg=colors['bg_main'])
+
+        tk.Label(dialog, text='添加学习计划', font=(self.config.get('font_family'), 13, 'bold'),
+                 bg=colors['bg_main'], fg=colors['fg_primary']).pack(pady=(12, 8))
+
+        tk.Label(dialog, text='计划内容', font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_main'], fg=colors['fg_secondary'], anchor=tk.W).pack(fill=tk.X, padx=20)
+        title_var = tk.StringVar()
+        tk.Entry(dialog, textvariable=title_var, font=(self.config.get('font_family'), 11),
+                 bg=colors['bg_input'], fg=colors['fg_primary'], relief=tk.FLAT
+                 ).pack(fill=tk.X, padx=20, pady=(2, 10), ipady=3)
+
+        def _save():
+            title = title_var.get().strip()
+            if not title:
+                return
+            self._plans.append({'title': title, 'done': False})
+            self._save_study_plans()
+            self._refresh_study_plan()
+            dialog.destroy()
+
+        btn_row = tk.Frame(dialog, bg=colors['bg_main'])
+        btn_row.pack(fill=tk.X, padx=20)
+        tk.Button(btn_row, text='取消', font=(self.config.get('font_family'), 10),
+                  bg=colors['bg_sidebar'], fg=colors['fg_primary'], padx=12, pady=4,
+                  command=dialog.destroy).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(btn_row, text='添加', font=(self.config.get('font_family'), 10),
+                  bg=colors['fg_accent'], fg='#ffffff', padx=12, pady=4,
+                  command=_save).pack(side=tk.RIGHT)
+
+    def _toggle_plan(self, idx):
+        if idx < len(self._plans):
+            self._plans[idx]['done'] = not self._plans[idx].get('done', False)
+            self._save_study_plans()
+            self._refresh_study_plan()
+
+    def _delete_plan(self, idx):
+        if idx < len(self._plans):
+            del self._plans[idx]
+            self._save_study_plans()
+            self._refresh_study_plan()
 
     # ============================================================
     # 赛事面板

@@ -343,14 +343,14 @@ class PlanModule:
 
     def _do_gen_search(self):
         tags = [n for n, v in self.gen_tag_vars.items() if v.get()]
-        if not tags:
-            self.gen_status.config(text='请选择至少一个知识点')
+        diffs = [d for d, v in self.gen_diff_vars.items() if v.get()]
+        source = self.gen_source_var.get()
+
+        # CF/AT 不需要标签也能搜
+        if not tags and source in ('luogu', 'local'):
+            self.gen_status.config(text='请选择至少一个知识点（CF/AT 可不选直接搜）')
             return
 
-        # 读取选中的难度
-        diffs = [d for d, v in self.gen_diff_vars.items() if v.get()]
-
-        source = self.gen_source_var.get()
         try:
             count = int(self.gen_count.get())
         except Exception:
@@ -367,19 +367,20 @@ class PlanModule:
                     results.extend(r)
             elif source == 'codeforces':
                 from services.fetcher import search_codeforces
-                # CF/AT 不传中文标签 → 直接用难度过滤
-                results = search_codeforces(limit=count * 2)
+                results = search_codeforces(limit=count * 3)
             elif source == 'atcoder':
                 from services.fetcher import search_atcoder
-                results = search_atcoder(keyword='', limit=count * 2)
+                results = search_atcoder(keyword='', limit=count * 3)
             else:
                 from services.fetcher import search_local
-                for tag in tags[:3]:
-                    r = search_local(keyword=tag)
-                    results.extend(r)
+                if tags:
+                    for tag in tags[:3]:
+                        r = search_local(keyword=tag)
+                        results.extend(r)
                 if not results:
-                    r = search_local()  # 无结果时搜索全部
+                    r = search_local()
                     results = r
+                results = results[:count * 2]
 
             # 去重 + 难度筛选
             seen = set()

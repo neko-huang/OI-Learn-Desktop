@@ -165,6 +165,7 @@ class Config:
             'checkin_streak': 0,
             'luogu_cookie': '',
             'home_note': '',
+            'study_plan': '[]',
         }
 
         self._load()
