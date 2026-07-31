@@ -333,11 +333,9 @@ class PlanModule:
     def _toggle_gen_panel(self):
         source = self.n_source.get()
         if source in ('smart', 'local'):
-            self.gen_panel.pack(fill=tk.X, padx=16, pady=(4, 0), before=self.n_desc.master.winfo_children()[0 if not hasattr(self, '_gen_packed') else -2])
-            self._gen_packed = True
+            self.gen_panel.pack(fill=tk.X, padx=16, pady=(4, 0), before=self.n_desc)
         else:
             self.gen_panel.pack_forget()
-            self._gen_packed = False
 
     # ============================================================
     # 智能生成搜索

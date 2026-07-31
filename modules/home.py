@@ -215,12 +215,17 @@ class HomeModule:
         scroll.pack(side=tk.RIGHT, fill=tk.Y, pady=(0, 8))
 
         inner = tk.Frame(canvas, bg=colors['bg_sidebar'])
+        self._contests_inner = inner  # 保存引用供刷新使用
         win = canvas.create_window((0, 0), window=inner, anchor=tk.NW)
         canvas.bind('<Configure>', lambda e: canvas.itemconfig(win, width=e.width - 4))
         inner.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
 
         contests = get_upcoming_contests()
         today = date.today()
+        self._populate_contests(inner, contests, today, colors)
+
+    def _populate_contests(self, inner, contests, today, colors):
+        """向赛事面板填充条目"""
         shown = 0
         for c in contests:
             if c['date'] < today:
@@ -257,7 +262,7 @@ class HomeModule:
                      bg=colors['bg_sidebar'], fg=fg).pack(side=tk.RIGHT)
 
         if shown == 0:
-            tk.Label(inner, text='暂无近期赛事',
+            tk.Label(inner, text='暂无近期赛事（刷新或编辑 noi_events.json）',
                      font=(self.config.get('font_family'), 10),
                      bg=colors['bg_sidebar'], fg=colors['fg_muted']).pack(pady=10)
 
@@ -296,8 +301,18 @@ class HomeModule:
     def _refresh_contests(self):
         """强制刷新赛事数据"""
         from services.contests import refresh_contests
-        refresh_contests()
-        self._build_ui()
+        refresh_contests()  # 清除缓存 + 重新拉取
+        if not hasattr(self, '_contests_inner'):
+            return
+        # 仅清空赛事列表并重新填充
+        inner = self._contests_inner
+        for w in inner.winfo_children():
+            w.destroy()
+
+        colors = self.config.get_colors()
+        contests = get_upcoming_contests()
+        today = date.today()
+        self._populate_contests(inner, contests, today, colors)
         self.app.set_status('赛事数据已刷新')
 
     def apply_theme(self):

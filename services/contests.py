@@ -172,12 +172,30 @@ def _create_default_noi_events(path: str):
 
 
 def get_all_contests() -> list:
-    """获取所有赛事（CF + AT + NOI 系列），按日期排序"""
+    """获取所有赛事（CF + AT + NOI），按日期排序，数据不足时保留占位链接"""
     contests = []
     contests.extend(fetch_cf_contests())
     contests.extend(fetch_atcoder_contests())
     contests.extend(fetch_noi_events())
-    contests.sort(key=lambda c: c['date'])
+
+    # 如无 AT 赛事，加入链接指向
+    has_at = any(c['type'] == 'AT' for c in contests)
+    if not has_at:
+        today = date.today()
+        contests.append({
+            'name': 'AtCoder 赛程（点击查看官网）', 'date': today,
+            'type': 'AT', 'url': 'https://atcoder.jp/contests/',
+        })
+
+    # 加入洛谷赛程链接
+    has_lg = any(c['type'] == '洛谷' for c in contests)
+    if not has_lg:
+        contests.append({
+            'name': '洛谷赛程（点击查看官网）', 'date': date.today(),
+            'type': '洛谷', 'url': 'https://www.luogu.com.cn/contest/list',
+        })
+
+    contests.sort(key=lambda c: (c['date'], c['type']))
     return contests
 
 
