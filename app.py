@@ -27,6 +27,7 @@ _MODULE_LOADER = {
     'problems':     ('modules.problems',     'ProblemsModule'),
     'templates':    ('modules.templates',    'TemplatesModule'),
     'mistakes':     ('modules.mistakes',     'MistakesModule'),
+    'plan':         ('modules.plan',         'PlanModule'),
     'stats':        ('modules.stats',        'StatsModule'),
 }
 
