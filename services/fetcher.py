@@ -1,21 +1,36 @@
 """
 外部题目获取服务
-支持从洛谷和 Codeforces API 搜索题目
+支持从洛谷(需Cookie)、AtCoder、Codeforces、本地题库搜索题目
 """
 
+import json
 import requests
-import time
+from config import Config
 
-# 洛谷搜索缓存（避免重复请求，最多500条）
+# 搜索缓存（避免重复请求，最多500条）
 _cache = {}
 _MAX_CACHE = 500
 
 
+def _get_luogu_cookie() -> str:
+    """从配置读取洛谷登录 Cookie"""
+    try:
+        cfg = Config()
+        return cfg.get('luogu_cookie', '')
+    except Exception:
+        return ''
+
+
 def search_luogu(keyword: str = '', difficulty: str = '', page: int = 1, limit: int = 20):
-    """从洛谷搜索题目"""
+    """
+    从洛谷搜索题目（匿名时可能触发反爬拦截）
+    若返回空列表且需登录，请在设置中配置 luogu_cookie
+    """
     cache_key = f'{keyword}#{difficulty}#{page}'
     if cache_key in _cache:
         return _cache[cache_key]
+
+    cookie = _get_luogu_cookie()
 
     try:
         url = 'https://www.luogu.com.cn/problem/list'
@@ -29,8 +44,21 @@ def search_luogu(keyword: str = '', difficulty: str = '', page: int = 1, limit: 
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'zh-CN,zh;q=0.9',
+            'Referer': 'https://www.luogu.com.cn/problem/list',
         }
+        if cookie:
+            headers['Cookie'] = cookie
+
         resp = requests.get(url, params=params, headers=headers, timeout=15)
+
+        # 反爬拦截检测：body 以 < 开头是 HTML 而非 JSON
+        if resp.text.startswith('<'):
+            if not cookie:
+                print('[洛谷] 反爬拦截：请在设置中配置 luogu_cookie（登录洛谷后从浏览器复制）')
+            else:
+                print('[洛谷] Cookie 可能已过期，请更新')
+            return []
+
         data = resp.json()
 
         if data.get('code') != 200:
@@ -55,7 +83,7 @@ def search_luogu(keyword: str = '', difficulty: str = '', page: int = 1, limit: 
 
         _cache[cache_key] = problems
         if len(_cache) > _MAX_CACHE:
-            _cache.pop(next(iter(_cache)))  # 移除最旧的条目
+            _cache.pop(next(iter(_cache)))
         return problems
 
     except requests.exceptions.Timeout:
@@ -64,9 +92,85 @@ def search_luogu(keyword: str = '', difficulty: str = '', page: int = 1, limit: 
     except requests.exceptions.ConnectionError:
         print(f'[洛谷] 网络连接失败')
         return []
+    except json.JSONDecodeError:
+        print(f'[洛谷] 返回非JSON数据（可能被反爬拦截），请配置登录Cookie')
+        return []
     except Exception as e:
         print(f'[洛谷] 错误: {e}')
         return []
+
+
+def search_atcoder(keyword: str = '', limit: int = 20):
+    """
+    从 AtCoder（kenkoooo 镜像）搜索题目
+    免费无需 key，数据全量缓存后客户端过滤
+    """
+    cache_key = f'at:{keyword}'
+    if cache_key in _cache:
+        return _cache[cache_key]
+
+    try:
+        # 拉取题目列表
+        resp = requests.get(
+            'https://kenkoooo.com/atcoder/resources/problems.json',
+            timeout=15
+        )
+        if resp.status_code != 200:
+            print(f'[AT] HTTP {resp.status_code}')
+            return []
+
+        problems_data = resp.json()
+        problems = []
+
+        for p in problems_data:
+            title = p.get('title', '')
+            contest_id = p.get('contest_id', '')
+            pid = p.get('id', '')
+
+            # 过滤关键词
+            if keyword and keyword.lower() not in title.lower():
+                continue
+
+            problems.append({
+                'platform': 'AtCoder',
+                'platform_id': pid,
+                'title': title,
+                'difficulty': '',
+                'tags': [],
+                'url': f'https://atcoder.jp/contests/{contest_id}/tasks/{pid}',
+            })
+
+            if len(problems) >= limit * 2:
+                break
+
+        # 按 contest_id 排序（保证稳定）
+        problems.sort(key=lambda x: x['platform_id'])
+
+        _cache[cache_key] = problems[:limit]
+        if len(_cache) > _MAX_CACHE:
+            _cache.pop(next(iter(_cache)))
+        return problems[:limit]
+
+    except requests.exceptions.Timeout:
+        print(f'[AT] 请求超时')
+        return []
+    except Exception as e:
+        print(f'[AT] 错误: {e}')
+        return []
+
+
+def search_vjudge(keyword: str = '', limit: int = 20):
+    """
+    从 vjudge 搜索题目（聚合多 OJ 含洛谷）
+    vjudge 无公开题目搜索 API，使用 vjudge.net/problem/{oj}-{id} 方式
+    """
+    cache_key = f'vj:{keyword}'
+    if cache_key in _cache:
+        return _cache[cache_key]
+
+    # vjudge 聚合了多 OJ，直接返回空（可作为未来扩展）
+    # 用户可以直接在浏览器使用 vjudge.net 搜索
+    return []
 
 
 def search_codeforces(tags: list = None, min_rating: int = None, max_rating: int = None,

@@ -222,9 +222,10 @@ class PlanModule:
 
         tk.Label(gen_ctrl, text='来源', font=(self.config.get('font_family'), 10),
                  bg=colors['bg_main'], fg=colors['fg_secondary']).pack(side=tk.LEFT, padx=(12, 4))
-        self.gen_source_var = tk.StringVar(value='luogu')
+        self.gen_source_var = tk.StringVar(value='codeforces')
         ttk.Combobox(gen_ctrl, textvariable=self.gen_source_var,
-                      values=['luogu', 'codeforces', 'local'], state='readonly', width=12).pack(side=tk.LEFT, padx=4)
+                      values=['codeforces', 'atcoder', 'luogu', 'local'],
+                      state='readonly', width=12).pack(side=tk.LEFT, padx=4)
 
         self.gen_status = tk.Label(self.gen_panel, text='',
                                     font=(self.config.get('font_family'), 10),
@@ -369,6 +370,11 @@ class PlanModule:
             elif source == 'codeforces':
                 from services.fetcher import search_codeforces
                 results = search_codeforces(tags=tags[:5], limit=count)
+            elif source == 'atcoder':
+                from services.fetcher import search_atcoder
+                for tag in tags[:5]:
+                    r = search_atcoder(keyword=tag, limit=count)
+                    results.extend(r)
             else:
                 from services.fetcher import search_local
                 for tag in tags[:5]:

@@ -15,45 +15,9 @@ from config import Config
 
 
 def get_upcoming_contests():
-    """返回 2026 年度近期赛事信息（含链接）"""
-    today = date.today()
-    year = today.year
-    contests = []
-
-    annual_events = [
-        ('NOI 冬令营', f'{year}-02-05', 'https://www.noi.cn/'),
-        ('WC WCCT', f'{year}-02-10', 'https://www.noi.cn/'),
-        ('CTS 比赛', f'{year}-02-15', 'https://www.noi.cn/'),
-        ('APIO', f'{year}-05-08', 'https://www.noi.cn/'),
-        ('NOI 省选', f'{year}-04-15', 'https://www.noi.cn/'),
-        ('NOI 国赛', f'{year}-07-15', 'https://www.noi.cn/'),
-        ('NOI 决赛', f'{year}-07-20', 'https://www.noi.cn/'),
-        ('NOI 集训队', f'{year}-08-01', 'https://www.noi.cn/'),
-        ('NOIP 提高组', f'{year}-11-15', 'https://www.noi.cn/'),
-        ('NOIP 普及组', f'{year}-10-18', 'https://www.noi.cn/'),
-        ('NOI 模拟赛 Round 1', f'{year}-09-15', 'https://www.noi.cn/'),
-    ]
-    for name, ds, url in annual_events:
-        try:
-            d = date.fromisoformat(ds)
-            contests.append({'name': name, 'date': d, 'type': 'NOI 系列', 'url': url})
-        except Exception:
-            pass
-
-    cur = date(today.year, today.month, 1)
-    for i in range(6):
-        m = cur.month + i
-        y = cur.year + (m - 1) // 12
-        m = ((m - 1) % 12) + 1
-        contests.append({'name': 'Codeforces Round ≈6-8 场', 'date': date(y, m, 15),
-                          'type': 'CF', 'url': 'https://codeforces.com/contests'})
-        contests.append({'name': 'AtCoder 常规赛 ≈4 场', 'date': date(y, m, 20),
-                          'type': 'AT', 'url': 'https://atcoder.jp/contests/'})
-        contests.append({'name': '洛谷周赛 ≈4 场', 'date': date(y, m, 25),
-                          'type': '洛谷', 'url': 'https://www.luogu.com.cn/contest/list'})
-
-    contests.sort(key=lambda c: c['date'])
-    return contests
+    """获取真实赛事数据（CF/AT 在线拉取 + NOI 系列配置文件）"""
+    from services.contests import get_all_contests
+    return get_all_contests()
 
 
 class HomeModule:
@@ -233,9 +197,16 @@ class HomeModule:
         panel = tk.Frame(parent, bg=colors['bg_sidebar'])
         panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4)
 
-        tk.Label(panel, text='近期赛事',
+        header = tk.Frame(panel, bg=colors['bg_sidebar'])
+        header.pack(fill=tk.X, padx=14, pady=(10, 6))
+        tk.Label(header, text='近期赛事',
                  font=(self.config.get('font_family'), 13, 'bold'),
-                 bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(anchor=tk.W, padx=14, pady=(10, 6))
+                 bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(side=tk.LEFT)
+        refresh_btn = tk.Label(header, text='🔄', font=(self.config.get('font_family'), 12),
+                               bg=colors['bg_sidebar'], fg=colors['fg_accent'],
+                               cursor='hand2', padx=4)
+        refresh_btn.pack(side=tk.RIGHT)
+        refresh_btn.bind('<Button-1>', lambda e: self._refresh_contests())
 
         canvas = tk.Canvas(panel, bg=colors['bg_sidebar'], highlightthickness=0)
         scroll = ttk.Scrollbar(panel, orient=tk.VERTICAL, command=canvas.yview)
@@ -321,6 +292,13 @@ class HomeModule:
 
     def on_before_leave(self):
         self._save_note()
+
+    def _refresh_contests(self):
+        """强制刷新赛事数据"""
+        from services.contests import refresh_contests
+        refresh_contests()
+        self._build_ui()
+        self.app.set_status('赛事数据已刷新')
 
     def apply_theme(self):
         for w in self.parent.winfo_children():
