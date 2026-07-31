@@ -15,6 +15,26 @@ from db.database import get_connection
 from modules.problem_meta import DIFFICULTIES, PROBLEM_CATEGORIES, PLATFORMS, STATUS_SYMBOLS
 
 
+def _build_problem_url(platform: str, platform_id: str) -> str:
+    """根据平台和题号构建题目链接"""
+    if not platform or not platform_id:
+        return ''
+    p = platform.lower()
+    if 'atcoder' in p:
+        return f'https://atcoder.jp/contests/abc/tasks/{platform_id}'
+    if 'codeforces' in p or 'cf' == p:
+        cid, idx = '', ''
+        for ch in platform_id:
+            if ch.isdigit(): cid += ch
+            else: idx += ch
+        if cid and idx:
+            return f'https://codeforces.com/problemset/problem/{cid}/{idx}'
+        return 'https://codeforces.com/contests'
+    if '洛谷' in p or 'luogu' in p:
+        return f'https://www.luogu.com.cn/problem/{platform_id}'
+    return ''
+
+
 class PlanModule:
 
     def __init__(self, app, parent_frame):
@@ -182,7 +202,7 @@ class PlanModule:
                  bg=colors['bg_main'], fg=colors['fg_primary'], anchor=tk.W).pack(fill=tk.X, padx=pad)
 
         self.n_source = tk.StringVar(value='manual')
-        for val, txt in [('manual', '手动添加'), ('smart', '智能生成'), ('local', '本地题库')]:
+        for val, txt in [('manual', '手动添加'), ('smart', '智能生成')]:
             tk.Radiobutton(self.n_inner, text=txt, variable=self.n_source, value=val,
                            font=(self.config.get('font_family'), 10),
                            bg=colors['bg_main'], fg=colors['fg_primary'],
@@ -331,8 +351,7 @@ class PlanModule:
             lbl.bind('<Button-1>', self._make_tag_toggle(var, lbl))
 
     def _toggle_gen_panel(self):
-        source = self.n_source.get()
-        if source in ('smart', 'local'):
+        if self.n_source.get() == 'smart':
             self.gen_panel.pack(fill=tk.X, padx=16, pady=(4, 0), before=self.n_desc)
         else:
             self.gen_panel.pack_forget()
@@ -490,13 +509,16 @@ class PlanModule:
         try:
             conn = get_connection()
             rows = conn.execute(
-                "SELECT id, name, practice_mode, status FROM practice_plans ORDER BY created_at DESC"
+                """SELECT p.id, p.name, p.practice_mode, p.status,
+                          (SELECT COUNT(*) FROM plan_problems WHERE plan_id=p.id) as cnt
+                   FROM practice_plans p ORDER BY p.created_at DESC"""
             ).fetchall()
             conn.close()
             for row in rows:
                 mode_icon = '⏱ ' if row['practice_mode'] == 'timed' else '📝 '
                 status_icon = '✓ ' if row['status'] == 'completed' else ''
-                self.listbox.insert(tk.END, f'{status_icon}{mode_icon}{row["name"]}')
+                cnt = row['cnt']
+                self.listbox.insert(tk.END, f'{status_icon}{mode_icon}{row["name"]}  ({cnt})')
                 self._ids.append(row['id'])
         except Exception:
             pass
@@ -546,6 +568,9 @@ class PlanModule:
         tk.Button(vbar, text='+ 添加题目', font=(self.config.get('font_family'), 10),
                   bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
                   cursor='hand2', command=self._add_problem_dialog).pack(side=tk.RIGHT, padx=8)
+        tk.Button(vbar, text='从本地添加', font=(self.config.get('font_family'), 10),
+                  bg=colors['bg_sidebar'], fg=colors['fg_accent'], relief=tk.FLAT,
+                  cursor='hand2', command=self._add_from_local_dialog).pack(side=tk.RIGHT, padx=8)
         tk.Button(vbar, text='导入题单', font=(self.config.get('font_family'), 10),
                   bg=colors['bg_sidebar'], fg=colors['fg_accent'], relief=tk.FLAT,
                   cursor='hand2', command=self._import_problemset_dialog).pack(side=tk.RIGHT, padx=8)
@@ -602,12 +627,28 @@ class PlanModule:
 
                 tk.Label(rf, text=f'{i+1}.', font=(self.config.get('font_family'), 10),
                          bg=colors['bg_main'], fg=colors['fg_muted']).pack(side=tk.LEFT, padx=(0, 8))
-                tk.Label(rf, text=item['title'] or f'题目 #{i+1}',
+
+                # 标题可点击 → 跳转到平台题目页
+                title_lbl = tk.Label(rf, text=item['title'] or f'题目 #{i+1}',
                          font=(self.config.get('font_family'), 11),
-                         bg=colors['bg_main'], fg=colors['fg_primary'], anchor=tk.W
-                         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
-                if item.get('platform'):
-                    tk.Label(rf, text=f'[{item["platform"]}]', font=(self.config.get('font_family'), 9),
+                         bg=colors['bg_main'], fg=colors['fg_primary'], anchor=tk.W,
+                         cursor='hand2')
+                title_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                plat = item.get('platform', '')
+                pid = item.get('platform_id', '')
+                if pid:
+                    url = _build_problem_url(plat, pid)
+                    if url:
+                        import webbrowser
+                        title_lbl.bind('<Button-1>', lambda e, u=url: webbrowser.open(u))
+                        title_lbl.bind('<Enter>', lambda e, l=title_lbl: l.configure(fg=colors['fg_link']))
+                        title_lbl.bind('<Leave>', lambda e, l=title_lbl: l.configure(fg=colors['fg_primary']))
+
+                if pid:
+                    tk.Label(rf, text=pid, font=(self.config.get('font_family'), 9),
+                             bg=colors['bg_main'], fg=colors['fg_muted']).pack(side=tk.LEFT, padx=4)
+                if plat:
+                    tk.Label(rf, text=f'[{plat}]', font=(self.config.get('font_family'), 9),
                              bg=colors['bg_main'], fg=colors['fg_muted']).pack(side=tk.LEFT, padx=4)
                 del_btn = tk.Label(rf, text='×', font=(self.config.get('font_family'), 12),
                                     bg=colors['bg_main'], fg=colors['fg_muted'],
@@ -675,6 +716,90 @@ class PlanModule:
             self._load_view()
         except Exception as e:
             self.app.set_status(f'添加失败: {e}')
+
+    def _add_from_local_dialog(self):
+        """从本地刷题记录添加题目到当前练习"""
+        if not self._current_id:
+            return
+        dialog = tk.Toplevel(self.parent)
+        dialog.title('从刷题记录添加')
+        dialog.geometry('600x500')
+        dialog.transient(self.parent)
+        colors = self.config.get_colors()
+        dialog.configure(bg=colors['bg_main'])
+
+        tk.Label(dialog, text='从刷题记录选择题目', font=(self.config.get('font_family'), 13, 'bold'),
+                 bg=colors['bg_main'], fg=colors['fg_primary']).pack(pady=(12, 4))
+
+        search_var = tk.StringVar()
+        tk.Entry(dialog, textvariable=search_var, font=(self.config.get('font_family'), 11),
+                 bg=colors['bg_input'], fg=colors['fg_primary'], relief=tk.FLAT
+                 ).pack(fill=tk.X, padx=16, pady=(0, 6))
+
+        # 题目列表
+        listbox = tk.Listbox(dialog, font=(self.config.get('font_family'), 10),
+                             bg=colors['bg_input'], fg=colors['fg_primary'],
+                             selectbackground=colors['fg_accent'],
+                             selectmode=tk.EXTENDED)
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(16, 0), pady=(0, 8))
+        sb = ttk.Scrollbar(dialog, orient=tk.VERTICAL, command=listbox.yview)
+        sb.pack(side=tk.RIGHT, fill=tk.Y, pady=(0, 8), padx=(0, 16))
+        listbox.configure(yscrollcommand=sb.set)
+
+        _local_ids = []
+
+        def _refresh():
+            listbox.delete(0, tk.END)
+            _local_ids.clear()
+            try:
+                conn = get_connection()
+                rows = conn.execute(
+                    "SELECT id, title, platform, platform_id, difficulty FROM problems ORDER BY updated_at DESC"
+                ).fetchall()
+                conn.close()
+                s = search_var.get().lower().strip()
+                for row in rows:
+                    title_low = row['title'].lower()
+                    pid_low = (row['platform_id'] or '').lower()
+                    if s and s not in title_low and s not in pid_low:
+                        continue
+                    listbox.insert(tk.END, f'{row["title"][:40]}  [{row["platform"]}]  {row.get("difficulty","")}')
+                    _local_ids.append(row['id'])
+            except Exception:
+                pass
+
+        search_var.trace_add('write', lambda *a: _refresh())
+        _refresh()
+
+        def _add_selected():
+            sel = listbox.curselection()
+            if not sel:
+                return
+            try:
+                conn = get_connection()
+                max_order = conn.execute("SELECT MAX(sort_order) FROM plan_problems WHERE plan_id=?",
+                                          (self._current_id,)).fetchone()
+                next_order = (max_order[0] or 0) + 1
+                for idx in sel:
+                    pid = _local_ids[idx]
+                    row = conn.execute("SELECT * FROM problems WHERE id=?", (pid,)).fetchone()
+                    if row:
+                        conn.execute(
+                            "INSERT INTO plan_problems (plan_id, problem_id, platform, platform_id, title, difficulty, sort_order) VALUES (?,?,?,?,?,?,?)",
+                            (self._current_id, row['id'], row['platform'], row.get('platform_id', ''),
+                             row['title'], row.get('difficulty', ''), next_order))
+                        next_order += 1
+                conn.commit()
+                conn.close()
+                self._load_view()
+                self.app.set_status(f'已添加 {len(sel)} 道题目')
+            except Exception as e:
+                self.app.set_status(f'添加失败: {e}')
+            dialog.destroy()
+
+        tk.Button(dialog, text='添加选中题目', font=(self.config.get('font_family'), 11, 'bold'),
+                  bg=colors['fg_accent'], fg='#ffffff', padx=16, pady=6,
+                  command=_add_selected).pack(pady=8)
 
     # ============================================================
     # 导入题单（洛谷 training 链接）
