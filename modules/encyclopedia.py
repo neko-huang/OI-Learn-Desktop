@@ -442,6 +442,14 @@ class EncyclopediaModule:
         self.search_var.set('')
         # 搜索框已经处于可聚焦状态
 
+    def on_export(self):
+        from services.exporter import export_encyclopedia_to_md
+        path = export_encyclopedia_to_md()
+        if path:
+            self.app.set_status(f'已导出: {path}')
+        else:
+            self.app.set_status('暂无数据可导出')
+
     # ============================================================
     # 主题
     # ============================================================

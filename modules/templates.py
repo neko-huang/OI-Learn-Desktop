@@ -335,6 +335,14 @@ class TemplatesModule:
     def on_new(self):
         self._start_add()
 
+    def on_export(self):
+        from services.exporter import export_templates_to_md
+        path = export_templates_to_md()
+        if path:
+            self.app.set_status(f'已导出: {path}')
+        else:
+            self.app.set_status('暂无数据可导出')
+
     def apply_theme(self):
         self._auto_save()
         for w in self.parent.winfo_children():

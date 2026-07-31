@@ -263,6 +263,14 @@ class OutlineModule:
         self.mastery_label.config(text=status_name, fg=fg, bg=bg)
         self.app.set_status(f'「{name}」→ {status_name}')
 
+    def on_export(self):
+        from services.exporter import export_outline_progress_to_json
+        path = export_outline_progress_to_json()
+        if path:
+            self.app.set_status(f'已导出: {path}')
+        else:
+            self.app.set_status('暂无进度数据可导出')
+
     def apply_theme(self):
         """响应主题切换 — 重建 UI 以应用新颜色"""
         # 保存树展开状态
