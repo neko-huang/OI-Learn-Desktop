@@ -768,7 +768,7 @@ class PlanModule:
                     pid_low = (row['platform_id'] or '').lower()
                     if s and s not in title_low and s not in pid_low:
                         continue
-                    listbox.insert(tk.END, f'{row["title"][:40]}  [{row["platform"]}]  {row.get("difficulty","")}')
+                    listbox.insert(tk.END, f'{row["title"][:40]}  [{row["platform"]}]  {row["difficulty"] or ""}')
                     _local_ids.append(row['id'])
                 if not rows:
                     listbox.insert(tk.END, '暂无刷题记录，请先在"刷题"模块添加题目')
@@ -793,8 +793,8 @@ class PlanModule:
                     if row:
                         conn.execute(
                             "INSERT INTO plan_problems (plan_id, problem_id, platform, platform_id, title, difficulty, sort_order) VALUES (?,?,?,?,?,?,?)",
-                            (self._current_id, row['id'], row['platform'], row.get('platform_id', ''),
-                             row['title'], row.get('difficulty', ''), next_order))
+                            (self._current_id, row['id'], row['platform'], row['platform_id'] or '',
+                             row['title'], row['difficulty'] or '', next_order))
                         next_order += 1
                 conn.commit()
                 conn.close()

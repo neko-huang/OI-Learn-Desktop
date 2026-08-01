@@ -281,13 +281,13 @@ def search_local(keyword: str = '', difficulty: str = ''):
 
         return [
             {
-                'platform': r['platform'],
-                'platform_id': r.get('platform_id', ''),
+                'platform': r['platform'] or '',
+                'platform_id': r['platform_id'] or '',
                 'title': r['title'],
-                'difficulty': r.get('difficulty', ''),
-                'tags_str': r.get('tags', ''),
+                'difficulty': r['difficulty'] or '',
+                'tags_str': r['tags'] or '',
                 'local_id': r['id'],
-                'status': r.get('status', ''),
+                'status': r['status'] or '',
             }
             for r in rows
         ]

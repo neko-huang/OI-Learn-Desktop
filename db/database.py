@@ -10,15 +10,23 @@ from config import get_data_dir
 DB_PATH = os.path.join(get_data_dir(), 'info-learn.db')
 
 
+def dict_factory(cursor, row):
+    """将 sqlite3 查询结果转为普通 dict（支持 .get() 方法）"""
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        d[col[0]] = row[idx]
+    return d
+
+
 def get_connection() -> sqlite3.Connection:
     """
     获取数据库连接
     每次调用返回新连接，保证线程安全
     """
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row          # 查询结果用字典访问
-    conn.execute("PRAGMA journal_mode=WAL")  # WAL 模式：读不阻塞写
-    conn.execute("PRAGMA foreign_keys=ON")   # 启用外键约束
+    conn.row_factory = dict_factory       # 查询结果返回 dict（支持 .get()）
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 

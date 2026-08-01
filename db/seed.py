@@ -564,8 +564,8 @@ def seed_database() -> str:
     messages = []
 
     # --- 导入模板（仅首次） ---
-    cursor.execute("SELECT COUNT(*) FROM templates")
-    if cursor.fetchone()[0] == 0:
+    cursor.execute("SELECT COUNT(*) as cnt FROM templates")
+    if cursor.fetchone()['cnt'] == 0:
         for tmpl in SEED_TEMPLATES:
             cursor.execute(
                 """INSERT INTO templates (name, category, language, code, note)
