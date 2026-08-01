@@ -234,13 +234,76 @@ class MistakesModule:
 
             self.view_title.config(text=row.get('title', '(未命名)'))
 
-            md = f'## 错误原因\n\n{row.get("reason", "") or "*暂无*"}\n\n'
-            if row.get('wrong_code'):
-                md += '## 错误代码\n\n```cpp\n' + row['wrong_code'] + '\n```\n\n'
-            if row.get('correct_code'):
-                md += '## 正确代码\n\n```cpp\n' + row['correct_code'] + '\n```\n'
-
-            self.view_md.render(md)
+            # 清除旧的对比面板
+            if hasattr(self, '_compare_frame'):
+                self._compare_frame.destroy()
+            
+            colors = self.config.get_colors()
+            
+            # 创建并列对比面板
+            self._compare_frame = tk.Frame(self.view_frame, bg=colors['bg_main'])
+            # 插入到 markdown view 之前
+            self._compare_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 4),
+                                      before=self.view_md)
+            
+            # 错误原因
+            reason = row.get('reason', '') or '*暂无*'
+            if reason and row.get('wrong_code'):
+                reason_frame = tk.Frame(self._compare_frame, bg=colors['bg_sidebar'],
+                                         highlightbackground=colors['border_card'],
+                                         highlightthickness=1)
+                reason_frame.pack(fill=tk.X, padx=8, pady=(8, 8))
+                tk.Label(reason_frame, text='💡 错误原因', 
+                         font=(self.config.get('font_family'), 11, 'bold'),
+                         bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(anchor=tk.W, padx=12, pady=(8, 4))
+                tk.Label(reason_frame, text=reason,
+                         font=(self.config.get('font_family'), 10),
+                         bg=colors['bg_sidebar'], fg=colors['fg_secondary'],
+                         wraplength=600, justify=tk.LEFT).pack(anchor=tk.W, padx=12, pady=(0, 8))
+            
+            # 代码并列对比区域
+            code_row = tk.Frame(self._compare_frame, bg=colors['bg_main'])
+            code_row.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+            
+            # 左侧：错误代码
+            left = tk.Frame(code_row, bg=colors['bg_main'])
+            left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
+            
+            wrong_header = tk.Frame(left, bg=colors['danger_bg'])
+            wrong_header.pack(fill=tk.X)
+            tk.Label(wrong_header, text='❌ 错误代码', 
+                     font=(self.config.get('font_family'), 11, 'bold'),
+                     bg=colors['danger_bg'], fg=colors['danger']).pack(anchor=tk.W, padx=10, pady=6)
+            
+            wrong_text = tk.Text(left, font=(self.config.get('code_font_family'), 11),
+                                  bg=colors['bg_input'], fg=colors['fg_primary'],
+                                  relief=tk.FLAT, wrap=tk.NONE, padx=10, pady=8,
+                                  state=tk.NORMAL)
+            wrong_text.pack(fill=tk.BOTH, expand=True)
+            wrong_text.insert('1.0', row.get('wrong_code', '') or '(无)')
+            wrong_text.configure(state=tk.DISABLED)
+            
+            # 右侧：正确代码
+            right = tk.Frame(code_row, bg=colors['bg_main'])
+            right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
+            
+            correct_header = tk.Frame(right, bg=colors['success_bg'])
+            correct_header.pack(fill=tk.X)
+            tk.Label(correct_header, text='✅ 正确代码',
+                     font=(self.config.get('font_family'), 11, 'bold'),
+                     bg=colors['success_bg'], fg=colors['success']).pack(anchor=tk.W, padx=10, pady=6)
+            
+            correct_text = tk.Text(right, font=(self.config.get('code_font_family'), 11),
+                                    bg=colors['bg_input'], fg=colors['fg_primary'],
+                                    relief=tk.FLAT, wrap=tk.NONE, padx=10, pady=8,
+                                    state=tk.NORMAL)
+            correct_text.pack(fill=tk.BOTH, expand=True)
+            correct_text.insert('1.0', row.get('correct_code', '') or '(无)')
+            correct_text.configure(state=tk.DISABLED)
+            
+            # 隐藏 Markdown 视图（已用对比面板替代）
+            self.view_md.pack_forget()
+            
         except Exception as e:
             self.app.set_status(f'加载失败: {e}')
 
@@ -343,6 +406,12 @@ class MistakesModule:
         for n in ('view', 'edit', 'empty'):
             getattr(self, f'{n}_frame').pack_forget()
         getattr(self, f'{name}_frame').pack(fill=tk.BOTH, expand=True)
+        # 切换到查看模式时，确保 MarkdownView 可见
+        if name == 'view':
+            if hasattr(self, '_compare_frame'):
+                self._compare_frame.destroy()
+                del self._compare_frame
+            self.view_md.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 4))
 
     def _mark_dirty(self):
         self._dirty = True

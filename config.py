@@ -61,6 +61,9 @@ LIGHT_THEME = {
     'fg_link': '#5B3FCF',           # 链接色
     'fg_on_accent': '#FFFFFF',      # 强调色上文字
 
+    'bg_card_shadow': '#E0DCF0',    # 卡片阴影色
+    'nav_indicator': '#7C3AED',     # 导航指示条颜色
+
     'border': '#E5E0F0',            # 细边框
     'border_active': '#7C3AED',
     'border_card': '#EFEBFC',       # 卡片边框
@@ -92,7 +95,7 @@ DARK_THEME = {
 
     'fg_primary': '#E8E4F0',
     'fg_secondary': '#A9A0C0',
-    'fg_muted': '#6B6590',
+    'fg_muted': '#8A84A8',
     'fg_accent': '#A78BFA',
     'fg_accent_light': '#C4B5FD',
     'fg_link': '#A78BFA',
@@ -102,6 +105,9 @@ DARK_THEME = {
     'border_active': '#A78BFA',
     'border_card': '#262238',
     'scrollbar': '#3D3860',
+
+    'bg_card_shadow': '#0A0910',    # 卡片阴影色
+    'nav_indicator': '#A78BFA',     # 导航指示条颜色
 
     'success': '#34D399',
     'success_bg': '#064E3B',
@@ -245,3 +251,20 @@ class Config:
     def set(self, key: str, value):
         self._settings[key] = value
         self.save()
+
+    def set_debounced(self, key: str, value, delay_ms: int = 500):
+        """防抖保存：延迟写入磁盘，高频调用时只保存最后一次"""
+        self._settings[key] = value
+        if hasattr(self, '_debounce_timers') and key in self._debounce_timers:
+            self._debounce_timers[key].cancel()
+        else:
+            if not hasattr(self, '_debounce_timers'):
+                self._debounce_timers = {}
+        
+        import threading
+        self._debounce_timers[key] = threading.Timer(
+            delay_ms / 1000.0, 
+            lambda: self.save()
+        )
+        self._debounce_timers[key].daemon = True
+        self._debounce_timers[key].start()

@@ -197,7 +197,6 @@ def migrate():
     try:
         conn.execute("ALTER TABLE problems ADD COLUMN description TEXT DEFAULT ''")
         conn.commit()
-        print("[迁移] 已添加 problems.description 字段")
     except Exception:
         pass  # 字段已存在，忽略
     conn.close()
@@ -207,13 +206,11 @@ def migrate():
     try:
         conn2.execute("ALTER TABLE practice_plans ADD COLUMN practice_mode TEXT DEFAULT 'free'")
         conn2.commit()
-        print("[迁移] 已添加 practice_plans.practice_mode 字段")
     except Exception:
         pass
     try:
         conn2.execute("ALTER TABLE practice_plans ADD COLUMN duration INTEGER DEFAULT 0")
         conn2.commit()
-        print("[迁移] 已添加 practice_plans.duration 字段")
     except Exception:
         pass
     conn2.close()
@@ -223,10 +220,6 @@ def migrate():
 
 
 # ============================================================
-# 首次 import 时自动建表
+# 注意：不再在 import 时自动建表
+# 数据库初始化由 app.py 的 App.__init__ 显式调用
 # ============================================================
-try:
-    if not os.path.exists(DB_PATH):
-        initialize_database()
-except Exception as e:
-    print(f"[数据库] 初始化失败: {e}")

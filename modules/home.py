@@ -184,15 +184,26 @@ class HomeModule:
             if dt == today:
                 bg = colors['fg_accent']
                 fg = '#ffffff'
-            elif dt_str <= last_date:
-                bg = '#AFA9EC'
-                fg = '#ffffff'
+            elif dt_str == last_date or (last_date and dt_str <= last_date and 
+                                          dt >= date.fromisoformat(last_date.replace(last_date, last_date))):
+                # 只高亮实际签到的日期，不再用字符串比较
+                # 检查该日期是否在连续签到区间内
+                try:
+                    last_d = date.fromisoformat(last_date)
+                    streak = self.config.get('checkin_streak', 0)
+                    if streak > 0:
+                        start_d = last_d - timedelta(days=streak - 1)
+                        if start_d <= dt <= last_d:
+                            bg = '#AFA9EC'
+                            fg = '#ffffff'
+                except:
+                    pass
             elif d > today.day:
                 bg = colors['bg_sidebar']
                 fg = colors['fg_muted']
 
             lbl = tk.Label(parent, text=str(d), font=(self.config.get('font_family'), 10),
-                            bg=bg, fg=fg, width=2, padx=6, pady=3)
+                            bg=bg, fg=fg, width=3, padx=8, pady=4)
             lbl.grid(row=row, column=col, padx=1, pady=1)
 
     # ============================================================
@@ -396,9 +407,16 @@ class HomeModule:
                      bg=colors['bg_sidebar'], fg=fg).pack(side=tk.RIGHT)
 
         if shown == 0:
-            tk.Label(inner, text='暂无近期赛事（刷新或编辑 noi_events.json）',
-                     font=(self.config.get('font_family'), 10),
-                     bg=colors['bg_sidebar'], fg=colors['fg_muted']).pack(pady=10)
+            empty_frame = tk.Frame(inner, bg=colors['bg_sidebar'])
+            empty_frame.pack(pady=16)
+            tk.Label(empty_frame, text='📅', font=('Segoe UI Emoji', 28),
+                     bg=colors['bg_sidebar'], fg=colors['fg_muted']).pack()
+            tk.Label(empty_frame, text='暂无近期赛事',
+                     font=(self.config.get('font_family'), 11),
+                     bg=colors['bg_sidebar'], fg=colors['fg_muted']).pack(pady=(4, 0))
+            tk.Label(empty_frame, text='点击 🔄 刷新或编辑 noi_events.json',
+                     font=(self.config.get('font_family'), 9),
+                     bg=colors['bg_sidebar'], fg=colors['fg_muted']).pack()
 
     # ============================================================
     # 便签区
@@ -427,7 +445,7 @@ class HomeModule:
 
     def _save_note(self):
         content = self.note_text.get('1.0', tk.END).strip()
-        self.config.set('home_note', content)
+        self.config.set_debounced('home_note', content, delay_ms=800)
 
     def on_before_leave(self):
         self._save_note()

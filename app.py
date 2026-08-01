@@ -110,19 +110,32 @@ class App(tk.Tk):
         left_pad.pack(side=tk.LEFT)
 
         self.nav_buttons = {}
+        self._nav_indicators = {}  # 导航指示条
         for mod in MODULES:
+            btn_container = tk.Frame(self.nav_frame, bg=colors['bg_nav'])
+            btn_container.pack(side=tk.LEFT)
+            
             btn = tk.Label(
-                self.nav_frame, text=mod['name'],
+                btn_container, text=mod['name'],
                 font=(self.config.get('font_family'), 12),
                 cursor='hand2', padx=16, pady=12,
                 bg=colors['bg_nav'], fg=colors['fg_secondary'],
             )
-            btn.pack(side=tk.LEFT)
+            btn.pack()
             btn.bind('<Button-1>', lambda e, mid=mod['id']: self.switch_module(mid))
             btn.bind('<Enter>', lambda e, b=btn: b.configure(fg=colors['fg_accent']))
             btn.bind('<Leave>', lambda e, b=btn, c=colors:
                       b.configure(fg=c['fg_accent'] if b is self.nav_buttons.get(self._active_module) else c['fg_secondary']))
+            btn.bind('<ButtonPress-1>', lambda e, b=btn: b.configure(fg=colors['fg_accent_light']))
+            btn.bind('<ButtonRelease-1>', lambda e, b=btn, c=colors: 
+                      b.configure(fg=c['fg_accent']))
             self.nav_buttons[mod['id']] = btn
+            
+            # 底部指示条（默认隐藏）
+            indicator = tk.Frame(btn_container, bg=colors['nav_indicator'], height=3)
+            indicator.pack(fill=tk.X, side=tk.BOTTOM)
+            indicator.pack_forget()  # 初始隐藏
+            self._nav_indicators[mod['id']] = indicator
 
         spacer = tk.Frame(self.nav_frame, bg=colors['bg_nav'])
         spacer.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -143,14 +156,19 @@ class App(tk.Tk):
         self.nav_sep.pack(side=tk.BOTTOM, fill=tk.X)
 
     def _update_nav_active(self):
-        """更新导航栏选中状态"""
+        """更新导航栏选中状态（含指示条动画效果）"""
         colors = self.config.get_colors()
         active = getattr(self, '_active_module', 'home')
         for mid, btn in self.nav_buttons.items():
+            indicator = self._nav_indicators.get(mid)
             if mid == active:
                 btn.configure(fg=colors['fg_accent'], font=(self.config.get('font_family'), 12, 'bold'))
+                if indicator:
+                    indicator.pack(fill=tk.X, side=tk.BOTTOM)
             else:
                 btn.configure(fg=colors['fg_secondary'], font=(self.config.get('font_family'), 12))
+                if indicator:
+                    indicator.pack_forget()
 
     def _build_content_area(self):
         """构建内容区域 —— 纯 Frame 切换，无 Notebook 标签栏"""

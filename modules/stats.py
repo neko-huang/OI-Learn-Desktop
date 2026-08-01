@@ -63,15 +63,18 @@ class StatsModule:
 
     def _make_card(self, parent, title, value):
         colors = self.config.get_colors()
-        card = tk.Frame(parent, bg=colors['bg_sidebar'], width=200, height=80)
-        card.pack(side=tk.LEFT, padx=(0, 8), pady=4)
+        card = tk.Frame(parent, bg=colors['bg_card'], 
+                         highlightbackground=colors['border_card'],
+                         highlightthickness=1,
+                         width=200, height=90)
+        card.pack(side=tk.LEFT, padx=(0, 10), pady=4)
         card.pack_propagate(False)
         tk.Label(card, text=title, font=(self.config.get('font_family'), 10),
-                 bg=colors['bg_sidebar'], fg=colors['fg_secondary']
-                 ).pack(anchor=tk.W, padx=12, pady=(12, 0))
-        label = tk.Label(card, text=value, font=(self.config.get('font_family'), 24, 'bold'),
-                          bg=colors['bg_sidebar'], fg=colors['fg_accent'])
-        label.pack(anchor=tk.W, padx=12)
+                 bg=colors['bg_card'], fg=colors['fg_secondary']
+                 ).pack(anchor=tk.W, padx=14, pady=(14, 0))
+        label = tk.Label(card, text=value, font=(self.config.get('font_family'), 26, 'bold'),
+                          bg=colors['bg_card'], fg=colors['fg_accent'])
+        label.pack(anchor=tk.W, padx=14, pady=(2, 0))
         return label
 
     def _refresh(self):
@@ -186,9 +189,10 @@ class StatsModule:
                 canvas.create_rectangle(label_w, y, label_w + done_w, y + bar_h,
                                          fill=colors['fg_accent'], outline='')
 
-            # 数字
-            canvas.create_text(label_w + bar_max_w + 5, y + bar_h / 2,
-                               text=f'{data["done"]}/{data["total"]}', anchor=tk.W,
+            # 数值标签（在柱子右端显示）
+            pct = int(data['done'] / data['total'] * 100) if data['total'] > 0 else 0
+            canvas.create_text(label_w + bar_max_w + 8, y + bar_h / 2,
+                               text=f'{data["done"]}/{data["total"]} ({pct}%)', anchor=tk.W,
                                font=(self.config.get('font_family'), 9),
                                fill=colors['fg_secondary'])
 

@@ -419,12 +419,28 @@ class ProblemsModule:
         self.e_status.pack(fill=tk.X, pady=(2, 0), ipady=2)
         self.e_status.bind('<<ComboboxSelected>>', lambda e: self._mark_dirty())
 
-        # 第三行：OJ链接
+        # 第三行：平台 + OJ链接
         row3 = tk.Frame(self.edit_inner, bg=colors['bg_main'])
         row3.pack(fill=tk.X, padx=pad_x, pady=(12, 0))
-        tk.Label(row3, text='OJ链接', font=(self.config.get('font_family'), 11),
+        
+        # 平台选择（左侧）
+        plat_frame = tk.Frame(row3, bg=colors['bg_main'])
+        plat_frame.pack(side=tk.LEFT, padx=(0, 12))
+        tk.Label(plat_frame, text='平台', font=(self.config.get('font_family'), 11),
                  bg=colors['bg_main'], fg=colors['fg_primary']).pack(anchor=tk.W)
-        self.e_url = tk.Entry(row3, font=(self.config.get('font_family'), 11),
+        self.e_platform = tk.StringVar(value='洛谷')
+        self.e_platform_combo = ttk.Combobox(plat_frame, textvariable=self.e_platform,
+                                              values=['洛谷', 'Codeforces', 'AtCoder', 'Other'],
+                                              state='readonly', width=12)
+        self.e_platform_combo.pack(pady=(2, 0), ipady=2)
+        self.e_platform_combo.bind('<<ComboboxSelected>>', lambda e: self._mark_dirty())
+        
+        # OJ链接（右侧，扩展）
+        url_frame = tk.Frame(row3, bg=colors['bg_main'])
+        url_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(url_frame, text='OJ链接', font=(self.config.get('font_family'), 11),
+                 bg=colors['bg_main'], fg=colors['fg_primary']).pack(anchor=tk.W)
+        self.e_url = tk.Entry(url_frame, font=(self.config.get('font_family'), 11),
                                bg=colors['bg_input'], fg=colors['fg_primary'], relief=tk.FLAT)
         self.e_url.pack(fill=tk.X, pady=(2, 0), ipady=4)
         self.e_url.bind('<KeyRelease>', lambda e: self._mark_dirty())
@@ -686,6 +702,10 @@ class ProblemsModule:
     def _clear_edit_form(self):
         self.e_pid.delete(0, tk.END)
         self.e_title.delete(0, tk.END)
+        try:
+            self.e_platform.set('洛谷')
+        except Exception:
+            pass
         self.e_url.delete(0, tk.END)
         try:
             self.e_difficulty.set('入门')
@@ -703,6 +723,11 @@ class ProblemsModule:
         self.e_pid.insert(0, row.get('platform_id', ''))
         self.e_title.delete(0, tk.END)
         self.e_title.insert(0, row.get('title', ''))
+        try:
+            platform = row.get('platform', '洛谷')
+            self.e_platform.set(platform if platform in ['洛谷', 'Codeforces', 'AtCoder', 'Other'] else 'Other')
+        except Exception:
+            pass
         self.e_url.delete(0, tk.END)
         self.e_url.insert(0, row.get('url', ''))
         try:
@@ -802,18 +827,26 @@ class ProblemsModule:
         try:
             conn = get_connection()
             if self._current_id:
+                try:
+                    platform = self.e_platform.get()
+                except Exception:
+                    platform = '洛谷'
                 conn.execute(
-                    """UPDATE problems SET title=?, platform_id=?, difficulty=?,
+                    """UPDATE problems SET title=?, platform=?, platform_id=?, difficulty=?,
                        tags=?, description=?, solution=?, url=?, status=?,
                        updated_at=datetime('now','localtime')
                        WHERE id=?""",
-                    (title, pid, difficulty, tags, desc, sol, url, status_en, self._current_id))
+                    (title, platform, pid, difficulty, tags, desc, sol, url, status_en, self._current_id))
             else:
+                try:
+                    platform = self.e_platform.get()
+                except Exception:
+                    platform = '洛谷'
                 cursor = conn.execute(
                     """INSERT INTO problems (title, platform, platform_id, difficulty, tags,
                        description, solution, url, status)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (title, '洛谷', pid, difficulty, tags, desc, sol, url, status_en))
+                    (title, platform, pid, difficulty, tags, desc, sol, url, status_en))
                 self._current_id = cursor.lastrowid
             conn.commit()
             conn.close()
