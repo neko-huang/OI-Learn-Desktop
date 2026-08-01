@@ -63,9 +63,10 @@ class ProblemsModule:
                  bg=colors['bg_sidebar'], fg=colors['fg_secondary']).pack(side=tk.LEFT, padx=(4, 4))
         self.search_var = tk.StringVar()
         self.search_var.trace_add('write', lambda *a: self._refresh_list())
-        tk.Entry(top, textvariable=self.search_var, font=(self.config.get('font_family'), 10),
+        self.search_entry = tk.Entry(top, textvariable=self.search_var, font=(self.config.get('font_family'), 10),
                  bg=colors['bg_input'], fg=colors['fg_primary'],
-                 relief=tk.FLAT, width=20).pack(side=tk.LEFT, padx=(0, 12))
+                 relief=tk.FLAT, width=20)
+        self.search_entry.pack(side=tk.LEFT, padx=(0, 12))
 
         tk.Label(top, text='状态:', font=(self.config.get('font_family'), 10),
                  bg=colors['bg_sidebar'], fg=colors['fg_secondary']).pack(side=tk.LEFT)
@@ -888,6 +889,11 @@ class ProblemsModule:
 
     def on_before_leave(self):
         self._auto_save()
+
+    def on_search(self):
+        """Ctrl+F: 聚焦搜索框并全选"""
+        self.search_entry.focus_set()
+        self.search_entry.select_range(0, 'end')
 
     def on_new(self):
         self._start_add()

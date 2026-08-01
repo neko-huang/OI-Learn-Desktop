@@ -1,15 +1,24 @@
 """
 易错集模块
 左侧列表 + 右侧错误/正确代码对比 + Markdown原因分析
-支持关联刷题记录、自动保存
+支持关联刷题记录、自动保存、易错标签分类
 """
 
+import json
 import tkinter as tk
 from tkinter import ttk, messagebox
 
 from config import Config
 from db.database import get_connection
 from components.markdown_view import MarkdownView
+
+# 预定义易错标签分类
+MISTAKE_TAG_CATEGORIES = {
+    '粗心类': ['计算错误', '边界条件', '数据类型', '数组越界'],
+    '思路类': ['题意理解', '算法选择', '状态定义', '转移方程'],
+    '知识类': ['图论', 'DP', '数据结构', '数学', '字符串'],
+    '其他': [],
+}
 
 
 class MistakesModule:
@@ -24,6 +33,8 @@ class MistakesModule:
         self._current_id = None
         self._mode = 'view'
         self._dirty = False
+        self.e_selected_tags = []  # 当前已选标签列表
+        self._view_tags = []       # 查看模式下的标签（只读）
 
         self._build_ui()
         self._refresh_list()
@@ -113,6 +124,10 @@ class MistakesModule:
                                     bg=colors['bg_main'], fg=colors['fg_primary'], anchor=tk.W)
         self.view_title.pack(fill=tk.X, padx=pad, pady=(12, 4))
 
+        # 查看模式标签 chip（只读）
+        self.view_tags_frame = tk.Frame(self.view_frame, bg=colors['bg_main'])
+        self.view_tags_frame.pack(fill=tk.X, padx=pad, pady=(0, 4))
+
         # 查看用 Markdown
         self.view_md = MarkdownView(self.view_frame)
         self.view_md.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 4))
@@ -143,6 +158,28 @@ class MistakesModule:
                                  bg=colors['bg_input'], fg=colors['fg_primary'], relief=tk.FLAT)
         self.e_title.pack(fill=tk.X, padx=pad, pady=(2, 4), ipady=4)
         self.e_title.bind('<KeyRelease>', lambda e: self._mark_dirty())
+
+        # 标签 chip 区域 + 添加按钮
+        tags_row = tk.Frame(self.edit_frame, bg=colors['bg_main'])
+        tags_row.pack(fill=tk.X, padx=pad, pady=(0, 4))
+
+        tk.Label(tags_row, text='标签:', font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_main'], fg=colors['fg_secondary']).pack(side=tk.LEFT, padx=(0, 4))
+
+        self.tags_chips_frame = tk.Frame(tags_row, bg=colors['bg_main'])
+        self.tags_chips_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        plus_btn = tk.Label(tags_row, text='+ 添加标签',
+                            font=(self.config.get('font_family'), 10),
+                            bg=colors['bg_tag'], fg=colors['fg_link'],
+                            cursor='hand2', padx=8, pady=2)
+        plus_btn.pack(side=tk.RIGHT)
+        plus_btn.bind('<Button-1>', lambda e: self._open_tag_picker())
+        plus_btn.bind('<Enter>', lambda e, b=plus_btn: b.configure(fg=colors['danger']))
+        plus_btn.bind('<Leave>', lambda e, b=plus_btn: b.configure(fg=colors['fg_link']))
+
+        self.e_selected_tags = []
+        self._render_tag_chips()
 
         # 错误代码 + 正确代码（左右并列）
         code_row = tk.Frame(self.edit_frame, bg=colors['bg_main'])
@@ -185,6 +222,143 @@ class MistakesModule:
         tk.Button(bar, text='返回查看', font=(self.config.get('font_family'), 10),
                   bg=colors['bg_sidebar'], fg=colors['fg_primary'], relief=tk.FLAT,
                   padx=16, pady=4, command=self._exit_edit).pack(side=tk.RIGHT, padx=8)
+
+    # ============================================================
+    # 标签 Chip 渲染
+    # ============================================================
+
+    def _render_tag_chips(self):
+        """渲染编辑模式下已选标签为 chip 块"""
+        colors = self.config.get_colors()
+        for w in self.tags_chips_frame.winfo_children():
+            w.destroy()
+
+        for tag in self.e_selected_tags:
+            chip = tk.Frame(self.tags_chips_frame, bg=colors['bg_tag'])
+            chip.pack(side=tk.LEFT, padx=(0, 4), pady=2)
+
+            tk.Label(chip, text=tag, font=(self.config.get('font_family'), 10),
+                     bg=colors['bg_tag'], fg=colors['fg_link']).pack(side=tk.LEFT, padx=(8, 2), pady=2)
+
+            x = tk.Label(chip, text='×', font=(self.config.get('font_family'), 11, 'bold'),
+                         bg=colors['bg_tag'], fg=colors['fg_link'],
+                         cursor='hand2', padx=4)
+            x.pack(side=tk.LEFT, pady=2)
+            x.bind('<Button-1>', lambda e, t=tag: self._remove_tag(t))
+            x.bind('<Enter>', lambda e, b=x: b.configure(fg=colors['danger']))
+            x.bind('<Leave>', lambda e, b=x: b.configure(fg=colors['fg_link']))
+
+    def _render_view_tags(self):
+        """渲染查看模式下标签 chip（只读，无删除按钮）"""
+        colors = self.config.get_colors()
+        for w in self.view_tags_frame.winfo_children():
+            w.destroy()
+
+        if not self._view_tags:
+            return
+
+        for tag in self._view_tags:
+            chip = tk.Frame(self.view_tags_frame, bg=colors['bg_tag'])
+            chip.pack(side=tk.LEFT, padx=(0, 4), pady=2)
+
+            tk.Label(chip, text=tag, font=(self.config.get('font_family'), 10),
+                     bg=colors['bg_tag'], fg=colors['fg_link'],
+                     padx=8, pady=2).pack(side=tk.LEFT)
+
+    def _remove_tag(self, tag: str):
+        """从编辑模式的已选标签中移除"""
+        if tag in self.e_selected_tags:
+            self.e_selected_tags.remove(tag)
+            self._render_tag_chips()
+            self._mark_dirty()
+
+    def _open_tag_picker(self):
+        """弹出易错标签选择对话框"""
+        dialog = tk.Toplevel(self.parent)
+        dialog.title('选择易错标签')
+        dialog.geometry('500x450')
+        dialog.transient(self.parent)
+        colors = self.config.get_colors()
+        dialog.configure(bg=colors['bg_main'])
+
+        # 搜索
+        search_fr = tk.Frame(dialog, bg=colors['bg_sidebar'])
+        search_fr.pack(fill=tk.X)
+        tk.Label(search_fr, text='搜索:', font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_sidebar'], fg=colors['fg_secondary']).pack(side=tk.LEFT, padx=8, pady=8)
+        search_var = tk.StringVar()
+        search_var.trace_add('write', lambda *a: _refresh_tags_list())
+        tk.Entry(search_fr, textvariable=search_var, font=(self.config.get('font_family'), 11),
+                 bg=colors['bg_input'], fg=colors['fg_primary'],
+                 relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8), pady=8)
+
+        # 标签列表（按分类分组）
+        canvas = tk.Canvas(dialog, bg=colors['bg_main'], highlightthickness=0)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+        scroll = ttk.Scrollbar(dialog, orient=tk.VERTICAL, command=canvas.yview)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y, pady=(0, 8))
+        canvas.configure(yscrollcommand=scroll.set)
+
+        inner = tk.Frame(canvas, bg=colors['bg_main'])
+        canvas.create_window((0, 0), window=inner, anchor=tk.NW)
+        inner.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
+
+        def _refresh_tags_list():
+            for w in inner.winfo_children():
+                w.destroy()
+            s = search_var.get().lower().strip()
+
+            for cat, tags in MISTAKE_TAG_CATEGORIES.items():
+                cat_tags = tags[:]
+                if s:
+                    cat_tags = [t for t in cat_tags if s in t.lower()]
+                if not cat_tags:
+                    continue
+                # 分类标题
+                tk.Label(inner, text=cat,
+                         font=(self.config.get('font_family'), 11, 'bold'),
+                         bg=colors['bg_main'], fg=colors['fg_accent']
+                         ).pack(anchor=tk.W, pady=(8, 4))
+                # 标签按钮
+                row = tk.Frame(inner, bg=colors['bg_main'])
+                row.pack(fill=tk.X)
+                for tag_name in cat_tags:
+                    is_selected = tag_name in self.e_selected_tags
+                    color_bg = colors['bg_tag'] if is_selected else colors['bg_main']
+                    color_fg = colors['fg_link'] if is_selected else colors['fg_primary']
+                    btn = tk.Label(row, text=tag_name,
+                                   font=(self.config.get('font_family'), 10),
+                                   bg=color_bg, fg=color_fg,
+                                   relief=tk.FLAT, padx=8, pady=3,
+                                   cursor='hand2')
+                    btn.pack(side=tk.LEFT, padx=(0, 4), pady=2)
+                    btn.bind('<Button-1>', lambda e, n=tag_name: self._toggle_tag(n))
+                    btn.bind('<Enter>', lambda e, b=btn: b.configure(bg=colors['bg_tag'], fg=colors['fg_link']))
+                    btn.bind('<Leave>', lambda e, b=btn, sel=is_selected: b.configure(
+                        bg=colors['bg_tag'] if sel else colors['bg_main'],
+                        fg=colors['fg_link'] if sel else colors['fg_primary']))
+
+        def _on_close():
+            dialog.destroy()
+            self._render_tag_chips()
+
+        # 按钮
+        btn_fr = tk.Frame(dialog, bg=colors['bg_main'])
+        btn_fr.pack(fill=tk.X, padx=8, pady=(0, 8))
+        tk.Button(btn_fr, text='关闭', font=(self.config.get('font_family'), 11),
+                  bg=colors['fg_accent'], fg='#ffffff',
+                  relief=tk.FLAT, padx=20, pady=6,
+                  command=_on_close).pack(side=tk.RIGHT)
+
+        _refresh_tags_list()
+
+    def _toggle_tag(self, tag_name: str):
+        """在标签选择器中切换标签选中状态"""
+        if tag_name in self.e_selected_tags:
+            self.e_selected_tags.remove(tag_name)
+        else:
+            self.e_selected_tags.append(tag_name)
+        self._mark_dirty()
 
     # ============================================================
     # 列表
@@ -233,6 +407,13 @@ class MistakesModule:
             row = dict(row)
 
             self.view_title.config(text=row.get('title', '(未命名)'))
+
+            # 加载查看模式标签
+            try:
+                self._view_tags = json.loads(row.get('tags') or '[]')
+            except Exception:
+                self._view_tags = []
+            self._render_view_tags()
 
             # 清除旧的对比面板
             if hasattr(self, '_compare_frame'):
@@ -318,6 +499,8 @@ class MistakesModule:
         self.e_wrong.delete('1.0', tk.END)
         self.e_correct.delete('1.0', tk.END)
         self.e_reason.delete('1.0', tk.END)
+        self.e_selected_tags = []
+        self._render_tag_chips()
         self._dirty = False
         self._show_frame('edit')
 
@@ -340,6 +523,12 @@ class MistakesModule:
                 self.e_correct.insert('1.0', row.get('correct_code', ''))
                 self.e_reason.delete('1.0', tk.END)
                 self.e_reason.insert('1.0', row.get('reason', ''))
+                # 加载标签
+                try:
+                    self.e_selected_tags = json.loads(row.get('tags') or '[]')
+                except Exception:
+                    self.e_selected_tags = []
+                self._render_tag_chips()
                 self._dirty = False
                 self._show_frame('edit')
         except Exception as e:
@@ -360,19 +549,20 @@ class MistakesModule:
         wrong = self.e_wrong.get('1.0', tk.END).strip()
         correct = self.e_correct.get('1.0', tk.END).strip()
         reason = self.e_reason.get('1.0', tk.END).strip()
+        tags = json.dumps(self.e_selected_tags, ensure_ascii=False)
 
         try:
             conn = get_connection()
             if self._current_id:
                 conn.execute(
                     """UPDATE mistakes SET title=?, wrong_code=?, correct_code=?, reason=?,
-                       updated_at=datetime('now','localtime') WHERE id=?""",
-                    (title, wrong, correct, reason, self._current_id))
+                       tags=?, updated_at=datetime('now','localtime') WHERE id=?""",
+                    (title, wrong, correct, reason, tags, self._current_id))
             else:
                 cursor = conn.execute(
-                    """INSERT INTO mistakes (title, wrong_code, correct_code, reason)
-                       VALUES (?, ?, ?, ?)""",
-                    (title, wrong, correct, reason))
+                    """INSERT INTO mistakes (title, wrong_code, correct_code, reason, tags)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (title, wrong, correct, reason, tags))
                 self._current_id = cursor.lastrowid
             conn.commit()
             conn.close()

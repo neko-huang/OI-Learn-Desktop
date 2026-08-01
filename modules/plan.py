@@ -1072,6 +1072,7 @@ class PlanModule:
             self._timer_id = self.parent.after(1000, self._update_timer)
         else:
             self.timer_label.config(text='00:00:00')
+            messagebox.showinfo('练习结束', '时间到！练习已结束')
             self._finish_practice()
 
     def _stop_timer(self):

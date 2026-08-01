@@ -121,14 +121,14 @@ class EncyclopediaModule:
         # 搜索框
         self.search_var = tk.StringVar()
         self.search_var.trace_add('write', lambda *a: self._refresh_list())
-        search_entry = tk.Entry(
+        self.search_entry = tk.Entry(
             toolbar,
             textvariable=self.search_var,
             font=(self.config.get('font_family'), 11),
             bg=colors['bg_input'], fg=colors['fg_primary'],
             relief=tk.FLAT, bd=0,
         )
-        search_entry.pack(side=tk.LEFT, padx=12, pady=8, fill=tk.X, expand=True)
+        self.search_entry.pack(side=tk.LEFT, padx=12, pady=8, fill=tk.X, expand=True)
 
         # 新建按钮
         new_btn = tk.Button(
@@ -438,9 +438,9 @@ class EncyclopediaModule:
             self._save_current()
 
     def on_search(self):
-        """Ctrl+F 快捷键处理：聚焦搜索框"""
-        self.search_var.set('')
-        # 搜索框已经处于可聚焦状态
+        """Ctrl+F 快捷键处理：聚焦搜索框并全选"""
+        self.search_entry.focus_set()
+        self.search_entry.select_range(0, 'end')
 
     def on_export(self):
         from services.exporter import export_encyclopedia_to_md

@@ -2,7 +2,7 @@
 首页模块（Dashboard）
 - 每日签到 + 月度日历
 - 近期赛事（NOI 系列 + 公开赛）
-- 便签/草稿区
+- 便签/草稿区（支持 Markdown 编辑与预览）
 """
 
 import tkinter as tk
@@ -12,6 +12,7 @@ import calendar
 import webbrowser
 
 from config import Config
+from components.markdown_view import MarkdownView
 
 
 def get_upcoming_contests():
@@ -28,6 +29,8 @@ class HomeModule:
         self.parent = parent_frame
         for w in parent_frame.winfo_children():
             w.destroy()
+
+        self._note_mode = 'edit'  # 'edit' 或 'preview'
 
         self._build_ui()
 
@@ -419,7 +422,7 @@ class HomeModule:
                      bg=colors['bg_sidebar'], fg=colors['fg_muted']).pack()
 
     # ============================================================
-    # 便签区
+    # 便签区（支持 Markdown 编辑/预览双模式）
     # ============================================================
 
     def _build_notes(self, parent):
@@ -428,20 +431,86 @@ class HomeModule:
         panel.pack(side=tk.RIGHT, fill=tk.Y)
         panel.pack_propagate(False)
 
-        tk.Label(panel, text='便签',
-                 font=(self.config.get('font_family'), 13, 'bold'),
-                 bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(anchor=tk.W, padx=14, pady=(10, 6))
+        # 标题行 + 模式切换按钮
+        header = tk.Frame(panel, bg=colors['bg_sidebar'])
+        header.pack(fill=tk.X, padx=14, pady=(10, 6))
 
-        self.note_text = tk.Text(panel, font=(self.config.get('font_family'), 11),
+        tk.Label(header, text='便签',
+                 font=(self.config.get('font_family'), 13, 'bold'),
+                 bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(side=tk.LEFT)
+
+        # 编辑/预览切换按钮
+        self.note_edit_btn = tk.Label(header, text='编辑',
+                                       font=(self.config.get('font_family'), 10),
+                                       bg=colors['bg_sidebar'], fg=colors['fg_primary'],
+                                       cursor='hand2', padx=6)
+        self.note_edit_btn.pack(side=tk.RIGHT)
+        self.note_edit_btn.bind('<Button-1>', lambda e: self._switch_note_mode('edit'))
+
+        tk.Label(header, text='|',
+                 font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_sidebar'], fg=colors['fg_muted']).pack(side=tk.RIGHT)
+
+        self.note_preview_btn = tk.Label(header, text='预览',
+                                          font=(self.config.get('font_family'), 10),
+                                          bg=colors['bg_sidebar'], fg=colors['fg_muted'],
+                                          cursor='hand2', padx=6)
+        self.note_preview_btn.pack(side=tk.RIGHT)
+        self.note_preview_btn.bind('<Button-1>', lambda e: self._switch_note_mode('preview'))
+
+        # 编辑模式容器
+        self.note_edit_frame = tk.Frame(panel, bg=colors['bg_sidebar'])
+        self.note_edit_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+
+        self.note_text = tk.Text(self.note_edit_frame, font=(self.config.get('font_family'), 11),
                                   bg=colors['bg_input'], fg=colors['fg_primary'],
                                   relief=tk.FLAT, wrap=tk.WORD, undo=True)
-        self.note_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        self.note_text.pack(fill=tk.BOTH, expand=True)
+        self.note_text.bind('<KeyRelease>', lambda e: self._save_note())
+
+        # 预览模式容器
+        self.note_preview_frame = tk.Frame(panel, bg=colors['bg_sidebar'])
+        self.note_md_view = MarkdownView(self.note_preview_frame)
+        self.note_md_view.pack(fill=tk.BOTH, expand=True)
 
         # 加载保存的便签
         saved = self.config.get('home_note', '')
         if saved:
             self.note_text.insert('1.0', saved)
-        self.note_text.bind('<KeyRelease>', lambda e: self._save_note())
+
+        # 默认进入编辑模式
+        self._note_mode = 'edit'
+        self._update_note_mode_ui()
+
+    def _switch_note_mode(self, mode):
+        """切换便签编辑/预览模式"""
+        if mode == self._note_mode:
+            return
+        # 切换到预览前，保存当前文本
+        if mode == 'preview':
+            content = self.note_text.get('1.0', tk.END).strip()
+            self.note_md_view.render(content)
+        self._note_mode = mode
+        self._update_note_mode_ui()
+
+    def _update_note_mode_ui(self):
+        """更新便签模式切换按钮样式和显示内容"""
+        colors = self.config.get_colors()
+
+        if self._note_mode == 'edit':
+            # 高亮编辑按钮，隐藏预览
+            self.note_edit_btn.config(fg=colors['fg_accent'])
+            self.note_preview_btn.config(fg=colors['fg_muted'])
+            # 显示编辑，隐藏预览
+            self.note_preview_frame.pack_forget()
+            self.note_edit_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        else:
+            # 高亮预览按钮，隐藏编辑
+            self.note_preview_btn.config(fg=colors['fg_accent'])
+            self.note_edit_btn.config(fg=colors['fg_muted'])
+            # 显示预览，隐藏编辑
+            self.note_edit_frame.pack_forget()
+            self.note_preview_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
     def _save_note(self):
         content = self.note_text.get('1.0', tk.END).strip()

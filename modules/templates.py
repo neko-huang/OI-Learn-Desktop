@@ -50,9 +50,10 @@ class TemplatesModule:
 
         self.search_var = tk.StringVar()
         self.search_var.trace_add('write', lambda *a: self._refresh_list())
-        tk.Entry(top, textvariable=self.search_var, font=(self.config.get('font_family'), 11),
+        self.search_entry = tk.Entry(top, textvariable=self.search_var, font=(self.config.get('font_family'), 11),
                  bg=colors['bg_input'], fg=colors['fg_primary'],
-                 relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=12, pady=8)
+                 relief=tk.FLAT)
+        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=12, pady=8)
 
         tk.Button(top, text='+ 新建', font=(self.config.get('font_family'), 10),
                   bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
@@ -331,6 +332,11 @@ class TemplatesModule:
 
     def on_before_leave(self):
         self._auto_save()
+
+    def on_search(self):
+        """Ctrl+F: 聚焦搜索框并全选"""
+        self.search_entry.focus_set()
+        self.search_entry.select_range(0, 'end')
 
     def on_new(self):
         self._start_add()

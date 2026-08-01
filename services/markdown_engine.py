@@ -14,47 +14,84 @@ import markdown
 from markdown.extensions import fenced_code, codehilite, tables, toc
 
 
-def _render_math_inline(match: re.Match) -> str:
+def _render_math_inline(match: re.Match, dark: bool = False) -> str:
     """
     处理 $...$ 内联数学公式
-    用带样式的 span 包装，让公式在视觉上有区分度
+    用带样式的 span 包装，使用数学专用字体和浅色背景
     """
     latex = match.group(1).strip()
     # 简单美化：移除多余空格
     latex = re.sub(r'\s+', ' ', latex)
+    if dark:
+        return (
+            f'<span class="math-inline" '
+            f'style="font-family: \'Cambria Math\', \'STIX Two Math\', \'Latin Modern Math\', Georgia, serif; '
+            f'font-style:italic; '
+            f'background:rgba(175, 169, 236, 0.15); '
+            f'color:#C4BEF0; '
+            f'padding:1px 5px; '
+            f'border-radius:3px; '
+            f'white-space:nowrap;'
+            f'">{latex}</span>'
+        )
     return (
         f'<span class="math-inline" '
-        f'style="font-family:Georgia,serif; font-style:italic; '
-        f'color:#534AB7; padding:0 2px;">{latex}</span>'
+        f'style="font-family: \'Cambria Math\', \'STIX Two Math\', \'Latin Modern Math\', Georgia, serif; '
+        f'font-style:italic; '
+        f'background:rgba(83, 74, 183, 0.08); '
+        f'color:#534AB7; '
+        f'padding:1px 5px; '
+        f'border-radius:3px; '
+        f'white-space:nowrap;'
+        f'">{latex}</span>'
     )
 
 
-def _render_math_block(match: re.Match) -> str:
+def _render_math_block(match: re.Match, dark: bool = False) -> str:
     """
     处理 $$...$$ 块级数学公式
-    渲染为居中、带背景的高亮块
+    渲染为居中、带背景的高亮块，使用数学专用字体
     """
     latex = match.group(1).strip()
     # 对换行和空格做简单清理
     lines = [l.strip() for l in latex.split('\n') if l.strip()]
     latex = ' \\\\ '.join(lines)
+    if dark:
+        return (
+            f'<div class="math-block" style="'
+            f'text-align:center; '
+            f'padding:20px 16px; '
+            f'margin:16px 0; '
+            f'background:#2A2545; '
+            f'border:1px solid #3E3860; '
+            f'border-radius:8px; '
+            f'font-family: \'Cambria Math\', \'STIX Two Math\', \'Latin Modern Math\', Georgia, serif; '
+            f'font-size:17px; '
+            f'font-style:italic; '
+            f'color:#C4BEF0; '
+            f'line-height:1.6; '
+            f'overflow-x:auto;'
+            f'">{latex}</div>'
+        )
     return (
         f'<div class="math-block" style="'
         f'text-align:center; '
-        f'padding:16px 8px; '
-        f'margin:12px 0; '
+        f'padding:20px 16px; '
+        f'margin:16px 0; '
         f'background:#F5F0FF; '
-        f'border-radius:6px; '
-        f'font-family:Georgia,serif; '
-        f'font-size:15px; '
+        f'border:1px solid #E8E0F5; '
+        f'border-radius:8px; '
+        f'font-family: \'Cambria Math\', \'STIX Two Math\', \'Latin Modern Math\', Georgia, serif; '
+        f'font-size:17px; '
         f'font-style:italic; '
         f'color:#3C3489; '
+        f'line-height:1.6; '
         f'overflow-x:auto;'
         f'">{latex}</div>'
     )
 
 
-def _preprocess_math(text: str) -> str:
+def _preprocess_math(text: str, dark: bool = False) -> tuple:
     """
     预处理：在 Markdown 渲染之前，保护数学公式不被 Markdown 解析器破坏
     策略：先替换为占位符，Markdown 渲染后再换回来
@@ -64,7 +101,7 @@ def _preprocess_math(text: str) -> str:
 
     # 1. 块级公式 $$...$$
     def save_block(match):
-        placeholders.append(_render_math_block(match))
+        placeholders.append(_render_math_block(match, dark=dark))
         return f'\u0000MATHBLOCK{len(placeholders)-1}\u0000'
 
     text = re.sub(r'\$\$(.+?)\$\$', save_block, text, flags=re.DOTALL)
@@ -74,7 +111,7 @@ def _preprocess_math(text: str) -> str:
         # 跳过 $$ 的情况（已在上面处理）
         content = match.group(1)
         if content.strip():
-            placeholders.append(_render_math_inline(match))
+            placeholders.append(_render_math_inline(match, dark=dark))
             return f'\u0000MATHINLINE{len(placeholders)-1}\u0000'
         return match.group(0)
 
@@ -106,7 +143,7 @@ def render_markdown(md_text: str, theme: str = 'light') -> str:
         return '<p></p>'
 
     # 1. 预处理数学公式
-    text, placeholders = _preprocess_math(md_text)
+    text, placeholders = _preprocess_math(md_text, dark=(theme == 'dark'))
 
     # 2. Markdown → HTML
     extensions = [
