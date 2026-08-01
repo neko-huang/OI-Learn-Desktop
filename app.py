@@ -111,9 +111,11 @@ class App(tk.Tk):
 
         self.nav_buttons = {}
         self._nav_indicators = {}  # 导航指示条
+        self._nav_containers = {}  # 导航按钮容器
         for mod in MODULES:
             btn_container = tk.Frame(self.nav_frame, bg=colors['bg_nav'])
             btn_container.pack(side=tk.LEFT)
+            self._nav_containers[mod['id']] = btn_container
             
             btn = tk.Label(
                 btn_container, text=mod['name'],
@@ -123,12 +125,12 @@ class App(tk.Tk):
             )
             btn.pack()
             btn.bind('<Button-1>', lambda e, mid=mod['id']: self.switch_module(mid))
-            btn.bind('<Enter>', lambda e, b=btn: b.configure(fg=colors['fg_accent']))
-            btn.bind('<Leave>', lambda e, b=btn, c=colors:
-                      b.configure(fg=c['fg_accent'] if b is self.nav_buttons.get(self._active_module) else c['fg_secondary']))
-            btn.bind('<ButtonPress-1>', lambda e, b=btn: b.configure(fg=colors['fg_accent_light']))
-            btn.bind('<ButtonRelease-1>', lambda e, b=btn, c=colors: 
-                      b.configure(fg=c['fg_accent']))
+            btn.bind('<Enter>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent']))
+            btn.bind('<Leave>', lambda e, b=btn:
+                      b.configure(fg=self.config.get_colors()['fg_accent'] if b is self.nav_buttons.get(self._active_module) else self.config.get_colors()['fg_secondary']))
+            btn.bind('<ButtonPress-1>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent_light']))
+            btn.bind('<ButtonRelease-1>', lambda e, b=btn: 
+                      b.configure(fg=self.config.get_colors()['fg_accent']))
             self.nav_buttons[mod['id']] = btn
             
             # 底部指示条（默认隐藏）
@@ -148,8 +150,8 @@ class App(tk.Tk):
         )
         self.settings_btn.pack(side=tk.RIGHT, padx=(0, 12))
         self.settings_btn.bind('<Button-1>', self._on_settings)
-        self.settings_btn.bind('<Enter>', lambda e: self.settings_btn.configure(fg=colors['fg_accent']))
-        self.settings_btn.bind('<Leave>', lambda e: self.settings_btn.configure(fg=colors['fg_muted']))
+        self.settings_btn.bind('<Enter>', lambda e: self.settings_btn.configure(fg=self.config.get_colors()['fg_accent']))
+        self.settings_btn.bind('<Leave>', lambda e: self.settings_btn.configure(fg=self.config.get_colors()['fg_muted']))
 
         # 底部细线
         self.nav_sep = tk.Frame(self.nav_outer, bg=colors['border'], height=1)
@@ -297,6 +299,15 @@ class App(tk.Tk):
         for w in self.nav_frame.winfo_children():
             try: w.configure(bg=colors['bg_nav'])
             except: pass
+        # 更新导航按钮容器、按钮标签和指示条
+        for mid, btn in self.nav_buttons.items():
+            container = self._nav_containers.get(mid)
+            if container:
+                container.configure(bg=colors['bg_nav'])
+            btn.configure(bg=colors['bg_nav'])
+            indicator = self._nav_indicators.get(mid)
+            if indicator:
+                indicator.configure(bg=colors['nav_indicator'])
         self.settings_btn.configure(bg=colors['bg_nav'], fg=colors['fg_muted'])
         self._update_nav_active()
 
