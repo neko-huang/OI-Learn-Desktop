@@ -10,8 +10,9 @@ import random
 import threading
 import tkinter as tk
 
-# 全局题目池缓存（一次拉取，多次随机采样）
+# 全局题目池缓存（一次拉取所有题目，多次随机采样，跟踪已用避免重复）
 _global_problem_pool = {'cf': [], 'at': [], 'local': [], 'cf_loaded': False, 'at_loaded': False}
+_used_ids = set()  # 本 session 已生成的题号，避免重复出现
 from tkinter import ttk, messagebox
 
 from config import Config
@@ -396,27 +397,45 @@ class PlanModule:
             elif source == 'codeforces':
                 if not _global_problem_pool['cf_loaded']:
                     from services.fetcher import search_codeforces
-                    _global_problem_pool['cf'] = search_codeforces(limit=500)
+                    _global_problem_pool['cf'] = search_codeforces(limit=5000)  # 拉取全部
                     _global_problem_pool['cf_loaded'] = True
                 total = _global_problem_pool['cf']
-                results = random.sample(total, min(count * 3, len(total))) if len(total) >= 3 else total
+                # 排除已用过的
+                available = [p for p in total if p.get('platform_id', '') not in _used_ids]
+                if len(available) < count:
+                    _used_ids.clear()  # 池子用完，重新开始
+                    available = total
+                sample_n = min(count * 2, len(available))
+                results = random.sample(available, sample_n) if len(available) >= sample_n else available
             elif source == 'atcoder':
                 if not _global_problem_pool['at_loaded']:
                     from services.fetcher import search_atcoder
-                    _global_problem_pool['at'] = search_atcoder(keyword='', limit=1000)
+                    _global_problem_pool['at'] = search_atcoder(keyword='', limit=5000)  # 拉取全部
                     _global_problem_pool['at_loaded'] = True
                 total = _global_problem_pool['at']
-                results = random.sample(total, min(count * 3, len(total))) if len(total) >= 3 else total
+                available = [p for p in total if p.get('platform_id', '') not in _used_ids]
+                if len(available) < count:
+                    _used_ids.clear()
+                    available = total
+                sample_n = min(count * 2, len(available))
+                results = random.sample(available, sample_n) if len(available) >= sample_n else available
             else:
                 if not _global_problem_pool['local']:
                     from services.fetcher import search_local
                     _global_problem_pool['local'] = search_local()
                 total = _global_problem_pool['local']
                 if tags:
-                    filtered = [p for p in total if any(t.lower() in p.get('title', '').lower() for t in tags)]
-                    if filtered:
-                        total = filtered
-                results = random.sample(total, min(count * 3, len(total))) if len(total) >= 3 else total
+                    total = [p for p in total if any(t.lower() in p.get('title', '').lower() for t in tags)]
+                available = [p for p in total if p.get('platform_id', '') not in _used_ids]
+                if len(available) < count:
+                    _used_ids.clear()
+                    available = total
+                sample_n = min(count * 2, len(available))
+                results = random.sample(available, sample_n) if len(available) >= sample_n else available
+
+            # 标记已用
+            for r in results:
+                _used_ids.add(r.get('platform_id', ''))
 
             # 去重 + 难度筛选（AT 不筛难度）
             seen = set()
