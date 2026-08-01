@@ -6,6 +6,7 @@
 """
 
 import json
+import random
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -384,17 +385,18 @@ class PlanModule:
 
         def _search():
             results = []
+            pool = max(count * 6, 30)  # 多取再随机打乱
             if source == 'luogu':
                 from services.fetcher import search_luogu
                 for tag in tags[:3]:
-                    r = search_luogu(keyword=tag, limit=count)
+                    r = search_luogu(keyword=tag, limit=pool)
                     results.extend(r)
             elif source == 'codeforces':
                 from services.fetcher import search_codeforces
-                results = search_codeforces(limit=count * 3)
+                results = search_codeforces(limit=pool)
             elif source == 'atcoder':
                 from services.fetcher import search_atcoder
-                results = search_atcoder(keyword='', limit=count * 3)
+                results = search_atcoder(keyword='', limit=pool)
             else:
                 from services.fetcher import search_local
                 if tags:
@@ -404,7 +406,7 @@ class PlanModule:
                 if not results:
                     r = search_local()
                     results = r
-                results = results[:count * 2]
+                results = results[:pool]
 
             # 去重 + 难度筛选（AT 不筛难度，其 difficulty 为空）
             seen = set()
@@ -417,6 +419,8 @@ class PlanModule:
                     continue
                 seen.add(rid)
                 unique.append(r)
+            # 随机打乱，每次生成不同题单
+            random.shuffle(unique)
             results = unique[:count]
 
             self.parent.after(0, lambda: self._on_gen_results(results))
