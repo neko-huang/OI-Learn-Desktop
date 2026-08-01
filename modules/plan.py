@@ -9,6 +9,9 @@ import json
 import random
 import threading
 import tkinter as tk
+
+# 全局题目池缓存（一次拉取，多次随机采样）
+_global_problem_pool = {'cf': [], 'at': [], 'local': [], 'cf_loaded': False, 'at_loaded': False}
 from tkinter import ttk, messagebox
 
 from config import Config
@@ -385,30 +388,37 @@ class PlanModule:
 
         def _search():
             results = []
-            pool = max(count * 6, 30)  # 多取再随机打乱
             if source == 'luogu':
                 from services.fetcher import search_luogu
                 for tag in tags[:3]:
-                    r = search_luogu(keyword=tag, limit=pool)
+                    r = search_luogu(keyword=tag, limit=count * 10)
                     results.extend(r)
             elif source == 'codeforces':
-                from services.fetcher import search_codeforces
-                results = search_codeforces(limit=pool)
+                if not _global_problem_pool['cf_loaded']:
+                    from services.fetcher import search_codeforces
+                    _global_problem_pool['cf'] = search_codeforces(limit=500)
+                    _global_problem_pool['cf_loaded'] = True
+                total = _global_problem_pool['cf']
+                results = random.sample(total, min(count * 3, len(total))) if len(total) >= 3 else total
             elif source == 'atcoder':
-                from services.fetcher import search_atcoder
-                results = search_atcoder(keyword='', limit=pool)
+                if not _global_problem_pool['at_loaded']:
+                    from services.fetcher import search_atcoder
+                    _global_problem_pool['at'] = search_atcoder(keyword='', limit=1000)
+                    _global_problem_pool['at_loaded'] = True
+                total = _global_problem_pool['at']
+                results = random.sample(total, min(count * 3, len(total))) if len(total) >= 3 else total
             else:
-                from services.fetcher import search_local
+                if not _global_problem_pool['local']:
+                    from services.fetcher import search_local
+                    _global_problem_pool['local'] = search_local()
+                total = _global_problem_pool['local']
                 if tags:
-                    for tag in tags[:3]:
-                        r = search_local(keyword=tag)
-                        results.extend(r)
-                if not results:
-                    r = search_local()
-                    results = r
-                results = results[:pool]
+                    filtered = [p for p in total if any(t.lower() in p.get('title', '').lower() for t in tags)]
+                    if filtered:
+                        total = filtered
+                results = random.sample(total, min(count * 3, len(total))) if len(total) >= 3 else total
 
-            # 去重 + 难度筛选（AT 不筛难度，其 difficulty 为空）
+            # 去重 + 难度筛选（AT 不筛难度）
             seen = set()
             unique = []
             for r in results:
@@ -419,8 +429,6 @@ class PlanModule:
                     continue
                 seen.add(rid)
                 unique.append(r)
-            # 随机打乱，每次生成不同题单
-            random.shuffle(unique)
             results = unique[:count]
 
             self.parent.after(0, lambda: self._on_gen_results(results))
