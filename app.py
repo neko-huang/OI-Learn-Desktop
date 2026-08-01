@@ -96,68 +96,61 @@ class App(tk.Tk):
             self.style.theme_use('vista')
 
     def _build_nav_bar(self):
-        """构建顶部导航栏 —— 仅 7 个模块按钮，无冗余"""
-        # 外层容器：白色/深色背景 + 底部分隔线
-        self.nav_outer = tk.Frame(self, height=48)
+        """顶部导航栏 — 现代风格"""
+        colors = self.config.get_colors()
+        self.nav_outer = tk.Frame(self, bg=colors['bg_nav'], height=50)
         self.nav_outer.pack(side=tk.TOP, fill=tk.X)
         self.nav_outer.pack_propagate(False)
 
-        # 内层按钮区域（居中排列，不贴边）
-        self.nav_frame = tk.Frame(self.nav_outer, height=48)
+        self.nav_frame = tk.Frame(self.nav_outer, bg=colors['bg_nav'], height=50)
         self.nav_frame.pack(fill=tk.BOTH, expand=True)
         self.nav_frame.pack_propagate(False)
 
-        # 左侧留白
-        left_pad = tk.Frame(self.nav_frame, width=16)
+        left_pad = tk.Frame(self.nav_frame, bg=colors['bg_nav'], width=16)
         left_pad.pack(side=tk.LEFT)
 
-        # 7 个模块按钮
         self.nav_buttons = {}
-        self.nav_indicators = {}  # 底部指示条
         for mod in MODULES:
             btn = tk.Label(
-                self.nav_frame,
-                text=mod['name'],
+                self.nav_frame, text=mod['name'],
                 font=(self.config.get('font_family'), 12),
-                cursor='hand2',
-                padx=14, pady=10,
+                cursor='hand2', padx=16, pady=12,
+                bg=colors['bg_nav'], fg=colors['fg_secondary'],
             )
-            btn.pack(side=tk.LEFT, padx=0)
+            btn.pack(side=tk.LEFT)
             btn.bind('<Button-1>', lambda e, mid=mod['id']: self.switch_module(mid))
-            btn.bind('<Enter>', lambda e, b=btn: self._nav_hover(b, True))
-            btn.bind('<Leave>', lambda e, b=btn: self._nav_hover(b, False))
+            btn.bind('<Enter>', lambda e, b=btn: b.configure(fg=colors['fg_accent']))
+            btn.bind('<Leave>', lambda e, b=btn, c=colors:
+                      b.configure(fg=c['fg_accent'] if b is self.nav_buttons.get(self._active_module) else c['fg_secondary']))
             self.nav_buttons[mod['id']] = btn
 
-        # 右侧弹簧把设置按钮推到最右边
-        spacer = tk.Frame(self.nav_frame)
+        spacer = tk.Frame(self.nav_frame, bg=colors['bg_nav'])
         spacer.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # 设置按钮（齿轮符号）
         self.settings_btn = tk.Label(
-            self.nav_frame,
-            text='\u2699',
-            font=(self.config.get('font_family'), 16),
-            cursor='hand2',
-            padx=12, pady=8,
+            self.nav_frame, text='\u2699',
+            font=(self.config.get('font_family'), 18),
+            cursor='hand2', padx=12, pady=10,
+            bg=colors['bg_nav'], fg=colors['fg_muted'],
         )
         self.settings_btn.pack(side=tk.RIGHT, padx=(0, 12))
         self.settings_btn.bind('<Button-1>', self._on_settings)
-        self.settings_btn.bind('<Enter>', lambda e: self._nav_hover(self.settings_btn, True))
-        self.settings_btn.bind('<Leave>', lambda e: self._nav_hover(self.settings_btn, False))
+        self.settings_btn.bind('<Enter>', lambda e: self.settings_btn.configure(fg=colors['fg_accent']))
+        self.settings_btn.bind('<Leave>', lambda e: self.settings_btn.configure(fg=colors['fg_muted']))
 
-        # 底部分隔线 Canvas
-        self.nav_separator = tk.Canvas(self.nav_outer, height=2, highlightthickness=0)
-        self.nav_separator.pack(side=tk.BOTTOM, fill=tk.X)
+        # 底部细线
+        self.nav_sep = tk.Frame(self.nav_outer, bg=colors['border'], height=1)
+        self.nav_sep.pack(side=tk.BOTTOM, fill=tk.X)
 
-    def _nav_hover(self, btn: tk.Label, entering: bool):
-        """导航按钮 hover 效果"""
+    def _update_nav_active(self):
+        """更新导航栏选中状态"""
         colors = self.config.get_colors()
-        if btn.cget('state') == 'disabled':
-            return
-        if entering:
-            btn.configure(fg=colors['fg_accent'])
-        else:
-            btn.configure(fg=colors['fg_secondary'])
+        active = getattr(self, '_active_module', 'home')
+        for mid, btn in self.nav_buttons.items():
+            if mid == active:
+                btn.configure(fg=colors['fg_accent'], font=(self.config.get('font_family'), 12, 'bold'))
+            else:
+                btn.configure(fg=colors['fg_secondary'], font=(self.config.get('font_family'), 12))
 
     def _build_content_area(self):
         """构建内容区域 —— 纯 Frame 切换，无 Notebook 标签栏"""
@@ -258,21 +251,9 @@ class App(tk.Tk):
             traceback.print_exc()
 
     def _update_nav_style(self, active_id: str):
-        """更新导航按钮样式：选中=高亮，未选中=常规"""
-        colors = self.config.get_colors()
-        for mid, btn in self.nav_buttons.items():
-            if mid == active_id:
-                btn.configure(
-                    fg=colors['fg_accent'],
-                    font=(self.config.get('font_family'), 12, 'bold'),
-                )
-                btn.bind('<Button-1>', lambda e: None)  # 禁用重复点击
-            else:
-                btn.configure(
-                    fg=colors['fg_secondary'],
-                    font=(self.config.get('font_family'), 12),
-                )
-                btn.bind('<Button-1>', lambda e, m=mid: self.switch_module(m))
+        """更新导航按钮样式"""
+        self._active_module = active_id
+        self._update_nav_active()
 
     def _module_name(self, module_id: str) -> str:
         for mod in MODULES:
@@ -292,37 +273,19 @@ class App(tk.Tk):
         self.configure(bg=colors['bg_main'])
 
         # 导航栏
-        self.nav_outer.configure(bg=colors['bg_main'])
-        self.nav_frame.configure(bg=colors['bg_main'])
-
-        # 底部分隔线
-        self.nav_separator.delete('all')
-        self.nav_separator.configure(bg=colors['bg_main'], highlightbackground=colors['bg_main'])
-        self.nav_separator.create_line(
-            16, 1, self.nav_separator.winfo_width() or 1200, 1,
-            fill=colors['border'], width=1
-        )
-
-        # 设置按钮
-        self.settings_btn.configure(bg=colors['bg_main'], fg=colors['fg_muted'])
-
-        # 导航按钮
-        active_id = self.current_module
-        for mid, btn in self.nav_buttons.items():
-            if mid == active_id:
-                btn.configure(bg=colors['bg_main'], fg=colors['fg_accent'])
-            else:
-                btn.configure(bg=colors['bg_main'], fg=colors['fg_secondary'])
+        self.nav_outer.configure(bg=colors['bg_nav'])
+        self.nav_frame.configure(bg=colors['bg_nav'])
+        self.nav_sep.configure(bg=colors['border'])
+        for w in self.nav_frame.winfo_children():
+            try: w.configure(bg=colors['bg_nav'])
+            except: pass
+        self.settings_btn.configure(bg=colors['bg_nav'], fg=colors['fg_muted'])
+        self._update_nav_active()
 
         # 内容区域
         self.content_frame.configure(bg=colors['bg_main'])
         for frame in self.module_frames.values():
             frame.configure(bg=colors['bg_main'])
-            for child in frame.winfo_children():
-                try:
-                    child.configure(bg=colors['bg_main'], fg=colors['fg_secondary'])
-                except tk.TclError:
-                    pass
 
         # 状态栏
         self.status_frame.configure(bg=colors['bg_sidebar'])

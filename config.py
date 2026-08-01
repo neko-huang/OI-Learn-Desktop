@@ -38,58 +38,77 @@ def get_settings_path() -> str:
 # ============================================================
 # 亮色主题颜色
 LIGHT_THEME = {
-    'bg_main': '#ffffff',           # 主背景
-    'bg_sidebar': '#f5f5f5',        # 侧边栏背景
-    'bg_nav': '#e8e8e8',            # 导航栏背景
-    'bg_nav_active': '#d0d0ff',     # 导航栏选中状态
-    'bg_input': '#ffffff',          # 输入框背景
-    'bg_code': '#f0f0f0',           # 代码块背景
-    'bg_table_header': '#e8e8e8',   # 表头背景
-    'bg_table_row_even': '#ffffff', # 表格偶数行
-    'bg_table_row_odd': '#f8f8f8',  # 表格奇数行
-    'bg_tag': '#e0e0ff',            # 标签背景
+    'bg_main': '#F5F2FF',           # 主背景 浅紫白
+    'bg_sidebar': '#F0ECFF',        # 侧边/面板 淡紫
+    'bg_card': '#FFFFFF',           # 卡片背景
+    'bg_nav': '#FFFFFF',            # 导航栏纯白
+    'bg_nav_active': '#7C3AED',     # 导航选中 深紫
+    'bg_nav_hover': '#F3EEFF',      # 导航悬停
+    'bg_input': '#FFFFFF',          # 输入框
+    'bg_code': '#F8F5FF',           # 代码块
+    'bg_table_header': '#EDE9FE',   # 表头 淡紫
+    'bg_table_row_even': '#FFFFFF',
+    'bg_table_row_odd': '#FAF8FF',
+    'bg_tag': '#EDE9FE',            # 标签
+    'bg_tag_active': '#7C3AED',     # 标签选中
+    'bg_progress': '#EDE9FE',       # 进度条底色
 
-    'fg_primary': '#1a1a1a',        # 主文字
-    'fg_secondary': '#555555',      # 次要文字
-    'fg_muted': '#888888',          # 弱化文字
-    'fg_accent': '#534AB7',         # 强调色（紫色）
-    'fg_link': '#185FA5',           # 链接色
+    'fg_primary': '#1E1B2E',        # 主文字 深紫黑
+    'fg_secondary': '#6B6590',      # 次要文字
+    'fg_muted': '#9B96B5',          # 弱化文字
+    'fg_accent': '#7C3AED',         # 强调色 紫色
+    'fg_accent_light': '#A78BFA',   # 浅紫
+    'fg_link': '#5B3FCF',           # 链接色
+    'fg_on_accent': '#FFFFFF',      # 强调色上文字
 
-    'border': '#cccccc',            # 边框
-    'border_active': '#534AB7',     # 选中边框
-    'scrollbar': '#bbbbbb',         # 滚动条
+    'border': '#E5E0F0',            # 细边框
+    'border_active': '#7C3AED',
+    'border_card': '#EFEBFC',       # 卡片边框
+    'scrollbar': '#CDCAE0',
 
-    'success': '#3B6D11',           # 绿色（已完成）
-    'warning': '#854F0B',           # 橙色（进行中）
-    'danger': '#A32D2D',            # 红色（错误）
+    'success': '#059669',           # 翠绿
+    'success_bg': '#ECFDF5',
+    'warning': '#D97706',           # 琥珀
+    'warning_bg': '#FFFBEB',
+    'danger': '#DC2626',            # 红
+    'danger_bg': '#FEF2F2',
 }
 
-# 暗色主题颜色
 DARK_THEME = {
-    'bg_main': '#1e1e1e',
-    'bg_sidebar': '#252526',
-    'bg_nav': '#2d2d30',
-    'bg_nav_active': '#3d3d6b',
-    'bg_input': '#2d2d30',
-    'bg_code': '#2d2d30',
-    'bg_table_header': '#333333',
-    'bg_table_row_even': '#1e1e1e',
-    'bg_table_row_odd': '#252526',
-    'bg_tag': '#3d3d6b',
+    'bg_main': '#13111A',
+    'bg_sidebar': '#1A1725',
+    'bg_card': '#1E1B2E',
+    'bg_nav': '#1A1725',
+    'bg_nav_active': '#7C3AED',
+    'bg_nav_hover': '#262238',
+    'bg_input': '#1E1B2E',
+    'bg_code': '#1A1725',
+    'bg_table_header': '#262238',
+    'bg_table_row_even': '#1E1B2E',
+    'bg_table_row_odd': '#1A1725',
+    'bg_tag': '#2E2550',
+    'bg_tag_active': '#7C3AED',
+    'bg_progress': '#262238',
 
-    'fg_primary': '#cccccc',
-    'fg_secondary': '#999999',
-    'fg_muted': '#666666',
-    'fg_accent': '#AFA9EC',
-    'fg_link': '#85B7EB',
+    'fg_primary': '#E8E4F0',
+    'fg_secondary': '#A9A0C0',
+    'fg_muted': '#6B6590',
+    'fg_accent': '#A78BFA',
+    'fg_accent_light': '#C4B5FD',
+    'fg_link': '#A78BFA',
+    'fg_on_accent': '#FFFFFF',
 
-    'border': '#3e3e42',
-    'border_active': '#AFA9EC',
-    'scrollbar': '#555555',
+    'border': '#2E2850',
+    'border_active': '#A78BFA',
+    'border_card': '#262238',
+    'scrollbar': '#3D3860',
 
-    'success': '#97C459',
-    'warning': '#FAC775',
-    'danger': '#F09595',
+    'success': '#34D399',
+    'success_bg': '#064E3B',
+    'warning': '#FBBF24',
+    'warning_bg': '#78350F',
+    'danger': '#F87171',
+    'danger_bg': '#7F1D1D',
 }
 
 
