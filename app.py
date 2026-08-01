@@ -111,6 +111,7 @@ class App(tk.Tk):
 
         self.nav_buttons = {}
         self._nav_indicators = {}  # 导航指示条
+        self._nav_indicator_frames = {}  # 指示条容器（独立于按钮，避免z-order遮挡点击）
         self._nav_containers = {}  # 导航按钮容器
         for mod in MODULES:
             btn_container = tk.Frame(self.nav_frame, bg=colors['bg_nav'])
@@ -133,11 +134,13 @@ class App(tk.Tk):
                       b.configure(fg=self.config.get_colors()['fg_accent']))
             self.nav_buttons[mod['id']] = btn
             
-            # 底部指示条（默认隐藏）
-            indicator = tk.Frame(btn_container, bg=colors['nav_indicator'], height=3)
-            indicator.pack(fill=tk.X, side=tk.BOTTOM)
-            indicator.pack_forget()  # 初始隐藏
-            self._nav_indicators[mod['id']] = indicator
+            # 底部指示条 — 放在独立 frame 中，避免与按钮 Label 共享容器导致 z-order 遮挡点击
+            indicator_frame = tk.Frame(btn_container, bg=colors['nav_indicator'], height=3)
+            indicator_frame.pack(fill=tk.X, side=tk.BOTTOM)
+            indicator_frame.pack_propagate(False)
+            indicator_frame.pack_forget()  # 初始隐藏
+            self._nav_indicator_frames[mod['id']] = indicator_frame
+            self._nav_indicators[mod['id']] = indicator_frame  # 保持兼容
 
         spacer = tk.Frame(self.nav_frame, bg=colors['bg_nav'])
         spacer.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -162,15 +165,15 @@ class App(tk.Tk):
         colors = self.config.get_colors()
         active = getattr(self, '_active_module', 'home')
         for mid, btn in self.nav_buttons.items():
-            indicator = self._nav_indicators.get(mid)
+            indicator_frame = self._nav_indicator_frames.get(mid)
             if mid == active:
                 btn.configure(fg=colors['fg_accent'], font=(self.config.get('font_family'), 12, 'bold'))
-                if indicator:
-                    indicator.pack(fill=tk.X, side=tk.BOTTOM)
+                if indicator_frame:
+                    indicator_frame.pack(fill=tk.X, side=tk.BOTTOM)
             else:
                 btn.configure(fg=colors['fg_secondary'], font=(self.config.get('font_family'), 12))
-                if indicator:
-                    indicator.pack_forget()
+                if indicator_frame:
+                    indicator_frame.pack_forget()
 
     def _build_content_area(self):
         """构建内容区域 —— 纯 Frame 切换，无 Notebook 标签栏"""
@@ -305,9 +308,9 @@ class App(tk.Tk):
             if container:
                 container.configure(bg=colors['bg_nav'])
             btn.configure(bg=colors['bg_nav'])
-            indicator = self._nav_indicators.get(mid)
-            if indicator:
-                indicator.configure(bg=colors['nav_indicator'])
+            indicator_frame = self._nav_indicator_frames.get(mid)
+            if indicator_frame:
+                indicator_frame.configure(bg=colors['nav_indicator'])
         self.settings_btn.configure(bg=colors['bg_nav'], fg=colors['fg_muted'])
         self._update_nav_active()
 
