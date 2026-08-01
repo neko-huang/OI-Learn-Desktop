@@ -184,14 +184,19 @@ class PlanModule:
                            bg=colors['bg_main'], fg=colors['fg_primary'],
                            selectcolor=colors['bg_sidebar']).pack(anchor=tk.W, padx=pad + 20)
 
-        dur_row = tk.Frame(self.n_inner, bg=colors['bg_main'])
-        dur_row.pack(fill=tk.X, padx=pad, pady=(8, 8))
-        tk.Label(dur_row, text='时长(分钟):', font=(self.config.get('font_family'), 10),
+        self._dur_row = tk.Frame(self.n_inner, bg=colors['bg_main'])
+        self._dur_row.pack(fill=tk.X, padx=pad, pady=(8, 8))
+        tk.Label(self._dur_row, text='时长(分钟):', font=(self.config.get('font_family'), 10),
                  bg=colors['bg_main'], fg=colors['fg_secondary']).pack(side=tk.LEFT)
-        self.n_dur = ttk.Combobox(dur_row, values=['60', '90', '120', '150', '180', '240', '300'],
+        self.n_dur = ttk.Combobox(self._dur_row, values=['60', '90', '120', '150', '180', '240', '300'],
                                    state='readonly', width=8)
         self.n_dur.pack(side=tk.LEFT, padx=4)
         self.n_dur.set('120')
+
+        # 自由练习时隐藏时长选择
+        self.n_mode.trace_add('write', lambda *a: (
+            self._dur_row.pack_forget() if self.n_mode.get() == 'free'
+            else self._dur_row.pack(fill=tk.X, padx=pad, pady=(8, 8))))
 
         # --- 智能生成区 ---
         sep = tk.Frame(self.n_inner, bg=colors['border'], height=1)
@@ -401,14 +406,14 @@ class PlanModule:
                     results = r
                 results = results[:count * 2]
 
-            # 去重 + 难度筛选
+            # 去重 + 难度筛选（AT 不筛难度，其 difficulty 为空）
             seen = set()
             unique = []
             for r in results:
                 rid = r.get('platform_id', '') or r.get('title', '')
                 if rid in seen:
                     continue
-                if diffs and r.get('difficulty', '') not in diffs:
+                if source != 'atcoder' and diffs and r.get('difficulty', '') not in diffs:
                     continue
                 seen.add(rid)
                 unique.append(r)
@@ -765,6 +770,8 @@ class PlanModule:
                         continue
                     listbox.insert(tk.END, f'{row["title"][:40]}  [{row["platform"]}]  {row.get("difficulty","")}')
                     _local_ids.append(row['id'])
+                if not rows:
+                    listbox.insert(tk.END, '暂无刷题记录，请先在"刷题"模块添加题目')
             except Exception:
                 pass
 

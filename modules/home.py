@@ -106,10 +106,10 @@ class HomeModule:
         self._update_checkin_btn()
 
         # 月历格子
-        cal_frame = tk.Frame(panel, bg=colors['bg_sidebar'])
-        cal_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 12))
+        self.cal_frame = tk.Frame(panel, bg=colors['bg_sidebar'])
+        self.cal_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 12))
 
-        self._draw_calendar(cal_frame)
+        self._draw_calendar()
 
     def _update_checkin_btn(self):
         today_str = str(date.today())
@@ -147,11 +147,13 @@ class HomeModule:
         self.config.set('last_checkin_date', today_str)
         self.config.set('checkin_streak', streak)
         self._update_checkin_btn()
-        self._draw_calendar(self.parent.winfo_children()[1].winfo_children()[0].winfo_children()[2])
+        self._draw_calendar()
         self.app.set_status(f'✓ 签到成功！连续 {streak} 天')
 
-    def _draw_calendar(self, parent):
+    def _draw_calendar(self, parent=None):
         """绘制月历"""
+        if parent is None:
+            parent = self.cal_frame
         for w in parent.winfo_children():
             w.destroy()
 
@@ -431,21 +433,34 @@ class HomeModule:
         self._save_note()
 
     def _refresh_contests(self):
-        """强制刷新赛事数据"""
-        from services.contests import refresh_contests
-        refresh_contests()  # 清除缓存 + 重新拉取
+        """强制刷新赛事数据（后台线程，不卡UI）"""
+        import threading
+
         if not hasattr(self, '_contests_inner'):
             return
-        # 仅清空赛事列表并重新填充
         inner = self._contests_inner
         for w in inner.winfo_children():
             w.destroy()
+        tk.Label(inner, text='正在刷新赛事数据...',
+                 font=(self.config.get('font_family'), 10),
+                 bg=self.config.get_colors()['bg_sidebar'],
+                 fg=self.config.get_colors()['fg_muted']).pack(pady=10)
 
+        def _do_refresh():
+            from services.contests import refresh_contests, get_all_contests
+            refresh_contests()
+            contests = get_all_contests()
+            self.parent.after(0, lambda: self._on_contests_refreshed(inner, contests))
+
+        threading.Thread(target=_do_refresh, daemon=True).start()
+
+    def _on_contests_refreshed(self, inner, contests):
+        for w in inner.winfo_children():
+            w.destroy()
         colors = self.config.get_colors()
-        contests = get_upcoming_contests()
         today = date.today()
         self._populate_contests(inner, contests, today, colors)
-        self.app.set_status('赛事数据已刷新')
+        self.app.set_status(f'赛事数据已刷新（{len(contests)} 场）')
 
     def apply_theme(self):
         for w in self.parent.winfo_children():
