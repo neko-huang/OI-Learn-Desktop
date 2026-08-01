@@ -20,6 +20,7 @@ data/settings.json
 data/info-learn.db
 data/info-learn.db-journal
 data/info-learn.db-wal
+data/contests_cache.json
 
 # Virtual environment
 venv/
