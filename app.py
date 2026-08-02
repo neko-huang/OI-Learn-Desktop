@@ -45,10 +45,8 @@ class App(tk.Tk):
         self.geometry(self._geometry_string())
         self.minsize(900, 600)
 
-        # 初始化数据库
-        initialize_database()
-        migrate()
-        seed_msg = seed_database()
+        # 设置窗口图标
+        self._set_window_icon()
 
         self.protocol('WM_DELETE_WINDOW', self._on_close)
         self.current_module = None
@@ -56,21 +54,56 @@ class App(tk.Tk):
         # 已加载的模块实例（懒加载）
         self._loaded_modules = {}
 
-        # ... 构建 UI ...
+        # 先构建 UI，让窗口尽快显示
         self._setup_style()
         self._build_nav_bar()
         self._build_content_area()
         self._build_status_bar()
         self.apply_theme()
         self._bind_shortcuts()
-        self.switch_module('home')
 
-        # 显示种子数据导入状态
-        if seed_msg:
-            self.after(500, lambda: self.set_status(seed_msg))
+        # 延迟执行重量级操作：数据库初始化 + 首页加载
+        # 避免阻塞 mainloop 启动导致窗口迟迟不显示
+        self.after(100, self._deferred_init)
 
         self.lift()
         self.focus_force()
+
+    def _set_window_icon(self):
+        """设置窗口图标"""
+        import os
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'app_icon.png')
+        if os.path.exists(icon_path):
+            try:
+                icon = tk.PhotoImage(file=icon_path)
+                self.iconphoto(True, icon)
+                self._icon_ref = icon  # 保持引用防止被 GC
+            except Exception:
+                pass
+
+    def _deferred_init(self):
+        """延迟初始化：数据库 + 种子数据 + 首页加载（窗口已显示后执行）"""
+        import threading
+        self.set_status('正在初始化数据库...')
+
+        def _init_db():
+            try:
+                initialize_database()
+                migrate()
+                seed_msg = seed_database()
+                self.after(0, lambda: self._on_db_ready(seed_msg))
+            except Exception as e:
+                self.after(0, lambda: self.set_status(f'数据库初始化异常: {e}'))
+
+        threading.Thread(target=_init_db, daemon=True).start()
+
+    def _on_db_ready(self, seed_msg):
+        """数据库初始化完成后的回调"""
+        self.switch_module('home')
+        if seed_msg:
+            self.set_status(seed_msg)
+        else:
+            self.set_status('')
 
     # ============================================================
     # 布局构建
@@ -111,13 +144,21 @@ class App(tk.Tk):
 
         self.nav_buttons = {}
         self._nav_indicators = {}  # 导航指示条
-        self._nav_indicator_frames = {}  # 指示条容器（独立于按钮，避免z-order遮挡点击）
+        self._nav_indicator_frames = {}  # 指示条容器
         self._nav_containers = {}  # 导航按钮容器
         for mod in MODULES:
-            btn_container = tk.Frame(self.nav_frame, bg=colors['bg_nav'])
+            btn_container = tk.Frame(self.nav_frame, bg=colors['bg_nav'], cursor='hand2')
             btn_container.pack(side=tk.LEFT)
             self._nav_containers[mod['id']] = btn_container
-            
+
+            # 底部指示条 — 先 pack 在底部，z-order 在 Label 之下，不会遮挡点击
+            indicator_frame = tk.Frame(btn_container, bg=colors['nav_indicator'], height=3)
+            indicator_frame.pack(fill=tk.X, side=tk.BOTTOM)
+            indicator_frame.pack_propagate(False)
+            indicator_frame.pack_forget()  # 初始隐藏
+            self._nav_indicator_frames[mod['id']] = indicator_frame
+            self._nav_indicators[mod['id']] = indicator_frame
+
             btn = tk.Label(
                 btn_container, text=mod['name'],
                 font=(self.config.get('font_family'), 12),
@@ -125,22 +166,15 @@ class App(tk.Tk):
                 bg=colors['bg_nav'], fg=colors['fg_secondary'],
             )
             btn.pack()
-            btn.bind('<Button-1>', lambda e, mid=mod['id']: self.switch_module(mid))
-            btn.bind('<Enter>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent']))
-            btn.bind('<Leave>', lambda e, b=btn:
-                      b.configure(fg=self.config.get_colors()['fg_accent'] if b is self.nav_buttons.get(self._active_module) else self.config.get_colors()['fg_secondary']))
-            btn.bind('<ButtonPress-1>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent_light']))
-            btn.bind('<ButtonRelease-1>', lambda e, b=btn: 
-                      b.configure(fg=self.config.get_colors()['fg_accent']))
             self.nav_buttons[mod['id']] = btn
-            
-            # 底部指示条 — 放在独立 frame 中，避免与按钮 Label 共享容器导致 z-order 遮挡点击
-            indicator_frame = tk.Frame(btn_container, bg=colors['nav_indicator'], height=3)
-            indicator_frame.pack(fill=tk.X, side=tk.BOTTOM)
-            indicator_frame.pack_propagate(False)
-            indicator_frame.pack_forget()  # 初始隐藏
-            self._nav_indicator_frames[mod['id']] = indicator_frame
-            self._nav_indicators[mod['id']] = indicator_frame  # 保持兼容
+
+            # 点击事件绑定在容器上，确保整个区域（含指示条）都能响应点击
+            mid = mod['id']
+            btn_container.bind('<Button-1>', lambda e, m=mid: self.switch_module(m))
+            btn_container.bind('<ButtonPress-1>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent_light']))
+            btn_container.bind('<ButtonRelease-1>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent']))
+            btn_container.bind('<Enter>', lambda e, b=btn, c=btn_container, m=mid: self._nav_hover_enter(m, b, c))
+            btn_container.bind('<Leave>', lambda e, b=btn, c=btn_container, m=mid: self._nav_hover_leave(m, b, c))
 
         spacer = tk.Frame(self.nav_frame, bg=colors['bg_nav'])
         spacer.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -159,6 +193,22 @@ class App(tk.Tk):
         # 底部细线
         self.nav_sep = tk.Frame(self.nav_outer, bg=colors['border'], height=1)
         self.nav_sep.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def _nav_hover_enter(self, module_id, btn, container):
+        """鼠标进入导航按钮区域"""
+        colors = self.config.get_colors()
+        active = getattr(self, '_active_module', None)
+        if module_id != active:
+            btn.configure(fg=colors['fg_accent'])
+
+    def _nav_hover_leave(self, module_id, btn, container):
+        """鼠标离开导航按钮区域"""
+        colors = self.config.get_colors()
+        active = getattr(self, '_active_module', None)
+        if module_id == active:
+            btn.configure(fg=colors['fg_accent'])
+        else:
+            btn.configure(fg=colors['fg_secondary'])
 
     def _update_nav_active(self):
         """更新导航栏选中状态（含指示条动画效果）"""
@@ -258,20 +308,36 @@ class App(tk.Tk):
             return
 
         import_path, class_name = loader_info
+        frame = self.module_frames[module_id]
         try:
             mod = __import__(import_path, fromlist=[class_name])
             cls = getattr(mod, class_name)
             # 清除占位内容
-            frame = self.module_frames[module_id]
             for w in frame.winfo_children():
                 w.destroy()
             # 实例化模块
             instance = cls(self, frame)
             self._loaded_modules[module_id] = instance
         except Exception as e:
-            self.set_status(f'加载模块失败: {e}')
             import traceback
             traceback.print_exc()
+            self.set_status(f'加载模块失败: {e}')
+            # 在 frame 中显示错误提示，避免空白页面
+            for w in frame.winfo_children():
+                w.destroy()
+            colors = self.config.get_colors()
+            err_frame = tk.Frame(frame, bg=colors['bg_main'])
+            err_frame.pack(fill=tk.BOTH, expand=True)
+            tk.Label(err_frame, text=f'⚠️ 模块加载失败',
+                     font=(self.config.get('font_family'), 16, 'bold'),
+                     bg=colors['bg_main'], fg=colors['danger']).pack(pady=(40, 8))
+            tk.Label(err_frame, text=str(e),
+                     font=(self.config.get('font_family'), 11),
+                     bg=colors['bg_main'], fg=colors['fg_secondary'],
+                     wraplength=500, justify=tk.LEFT).pack(pady=4, padx=20)
+            tk.Label(err_frame, text='请检查依赖是否安装完整，或查看控制台日志',
+                     font=(self.config.get('font_family'), 10),
+                     bg=colors['bg_main'], fg=colors['fg_muted']).pack(pady=4)
 
     def _update_nav_style(self, active_id: str):
         """更新导航按钮样式"""
