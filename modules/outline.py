@@ -26,6 +26,13 @@ MASTERY_MAP = {
 LEVEL_MAP = {'entry': '入门', 'improve': '提高', 'noi': 'NOI'}
 REV_LEVEL_MAP = {'入门': 'entry', '提高': 'improve', 'NOI': 'noi'}
 
+# 等级显示配置：颜色、背景色、徽标
+LEVEL_DISPLAY = {
+    'entry':   {'text': '入门', 'color': '#2E7D32', 'bg': '#E8F5E9', 'badge': '🌱'},
+    'improve': {'text': '提高', 'color': '#E65100', 'bg': '#FFF3E0', 'badge': '🔥'},
+    'noi':     {'text': 'NOI',  'color': '#C62828', 'bg': '#FFEBEE', 'badge': '⚡'},
+}
+
 
 class OutlineModule:
 
@@ -83,7 +90,23 @@ class OutlineModule:
         left_frame.pack_propagate(False)
 
         tk.Label(left_frame, text='算法大纲', font=(self.config.get('font_family'), 13, 'bold'),
-                 bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(fill=tk.X, padx=12, pady=(10, 6))
+                 bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(fill=tk.X, padx=12, pady=(10, 2))
+
+        # 等级筛选栏
+        self._level_filter = 'all'
+        filter_frame = tk.Frame(left_frame, bg=colors['bg_sidebar'])
+        filter_frame.pack(fill=tk.X, padx=8, pady=(0, 4))
+        filters = [('all', '全部'), ('entry', '🌱入门'), ('improve', '🔥提高'), ('noi', '⚡NOI')]
+        self._filter_buttons = {}
+        for fkey, ftext in filters:
+            btn = tk.Label(filter_frame, text=ftext,
+                           font=(self.config.get('font_family'), 9),
+                           bg=colors['bg_sidebar'], fg=colors['fg_secondary'],
+                           cursor='hand2', padx=6, pady=2)
+            btn.pack(side=tk.LEFT, padx=2)
+            btn.bind('<Button-1>', lambda e, k=fkey: self._set_level_filter(k))
+            self._filter_buttons[fkey] = btn
+        self._update_filter_highlight()
 
         tree_frame = tk.Frame(left_frame, bg=colors['bg_sidebar'])
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=(0, 4))
@@ -152,6 +175,26 @@ class OutlineModule:
 
         self._show_detail(False)
 
+    def _set_level_filter(self, level_key: str):
+        """设置等级筛选并刷新树"""
+        self._level_filter = level_key
+        self._update_filter_highlight()
+        self._populate_tree()
+
+    def _update_filter_highlight(self):
+        """高亮当前选中的筛选按钮"""
+        colors = self.config.get_colors()
+        for fkey, btn in self._filter_buttons.items():
+            if fkey == self._level_filter:
+                btn.config(bg=colors['fg_accent'], fg='#ffffff')
+            else:
+                btn.config(bg=colors['bg_sidebar'], fg=colors['fg_secondary'])
+
+    def _level_badge(self, level_key: str) -> str:
+        """返回带徽标的等级文本，如 '🌱入门'"""
+        info = LEVEL_DISPLAY.get(level_key, LEVEL_DISPLAY['entry'])
+        return f'{info["badge"]}{info["text"]}'
+
     def _show_detail(self, show: bool):
         self.empty_frame.pack_forget()
         self.detail_frame.pack_forget()
@@ -167,27 +210,55 @@ class OutlineModule:
     def _populate_tree(self):
         self.tree.delete(*self.tree.get_children())
 
+        # 为每个等级配置 tag 颜色
+        for lvl_key, lvl_info in LEVEL_DISPLAY.items():
+            self.tree.tag_configure(f'level_{lvl_key}', foreground=lvl_info['color'])
+
         for cat in self.categories:
             cat_node = self.tree.insert('', tk.END, text=cat['name'],
                                          tags=('category',), iid=cat['id'], open=False)
+            has_visible = False  # 该分类下是否有可见子节点
             # 插入内置主题
             for topic in cat['topics']:
                 topic_node = self.tree.insert(cat_node, tk.END, text=topic['name'],
                                                tags=('topic',), iid=topic['id'], open=False)
+                topic_visible = False
                 for sub in topic['subtopics']:
                     sub_id = sub[0]
+                    sub_level = sub[4]  # level key: entry/improve/noi
+                    # 筛选
+                    if self._level_filter != 'all' and sub_level != self._level_filter:
+                        continue
+                    topic_visible = True
                     status = self._progress.get(sub_id, 'none')
                     symbol = self._mastery_symbol(status)
-                    self.tree.insert(topic_node, tk.END, text=f'{symbol} {sub[1]}',
-                                      tags=('subtopic',), iid=sub_id)
+                    badge = self._level_badge(sub_level)
+                    self.tree.insert(topic_node, tk.END,
+                                      text=f'{symbol} {sub[1]}  [{badge}]',
+                                      tags=('subtopic', f'level_{sub_level}'),
+                                      iid=sub_id)
+                if not topic_visible:
+                    self.tree.detach(topic_node)
+                else:
+                    has_visible = True
 
             # 插入自定义条目（属于该分类）
             for tid, ct in self._custom_topics.items():
                 if ct.get('category_name') == cat['name'] and ct.get('parent_id', '') == cat['id']:
+                    ct_level = ct.get('level', 'entry')
+                    if self._level_filter != 'all' and ct_level != self._level_filter:
+                        continue
+                    has_visible = True
                     status = self._progress.get(tid, 'none')
                     symbol = self._mastery_symbol(status)
-                    self.tree.insert(cat_node, tk.END, text=f'{symbol} ✎ {ct["name"]}',
-                                      tags=('custom',), iid=tid)
+                    badge = self._level_badge(ct_level)
+                    self.tree.insert(cat_node, tk.END,
+                                      text=f'{symbol} ✎ {ct["name"]}  [{badge}]',
+                                      tags=('custom', f'level_{ct_level}'),
+                                      iid=tid)
+
+            if not has_visible:
+                self.tree.detach(cat_node)
 
         self.tree.tag_configure('category', font=(self.config.get('font_family'), 12, 'bold'))
         self.tree.tag_configure('topic', font=(self.config.get('font_family'), 11))
@@ -250,8 +321,9 @@ class OutlineModule:
         diff = topic_info.get('difficulty', 1)
         level_key = topic_info.get('level', 'entry')
         level = LEVEL_MAP.get(level_key, level_key)
+        badge = self._level_badge(level_key)
         self.meta_difficulty.config(text=f'难度: {"★" * diff}')
-        self.meta_level.config(text=f'等级: {level}')
+        self.meta_level.config(text=f'等级: {badge}')
 
         current = self._progress.get(item_id, 'none')
         self.mastery_var.set(current)
@@ -264,6 +336,7 @@ class OutlineModule:
         desc = topic_info.get('desc', '暂无详细说明')
         md = f'## {name}\n\n{desc}\n\n'
         md += f'- **难度**: {"★" * diff} ({level})\n'
+        md += f'- **等级**: {badge}\n'
         md += f'- **分类**: {cat}\n'
         md += f'- **掌握度**: {status_name}\n'
         self.markdown_view.render(md)
@@ -547,8 +620,11 @@ class OutlineModule:
         self._save_progress(item_id, new_mastery)
 
         symbol = self._mastery_symbol(new_mastery)
-        name = self._topic_map[item_id]['name']
-        self.tree.item(item_id, text=f'{symbol} {name}')
+        info = self._topic_map[item_id]
+        name = info['name']
+        level_key = info.get('level', 'entry')
+        badge = self._level_badge(level_key)
+        self.tree.item(item_id, text=f'{symbol} {name}  [{badge}]')
 
         status_name, fg, bg = MASTERY_MAP[new_mastery]
         self.mastery_label.config(text=status_name, fg=fg, bg=bg)
