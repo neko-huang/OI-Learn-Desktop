@@ -99,7 +99,10 @@ class App(tk.Tk):
 
     def _on_db_ready(self, seed_msg):
         """数据库初始化完成后的回调"""
-        self.switch_module('home')
+        # 只在未切换到任何模块时才切到首页
+        # 避免打断用户已主动导航到的模块
+        if self.current_module is None:
+            self.switch_module('home')
         if seed_msg:
             self.set_status(seed_msg)
 
@@ -165,9 +168,10 @@ class App(tk.Tk):
             self.nav_buttons[mod['id']] = btn
 
             # 点击事件直接绑定在 Label 上（Tkinter 子控件事件不会冒泡到父 Frame）
+            # ⚠️ 注意：<Button-1> 和 <ButtonPress-1> 是同一个事件，不能同时绑定
+            # 否则第二个会覆盖第一个，导致 switch_module 不触发
             mid = mod['id']
             btn.bind('<Button-1>', lambda e, m=mid: self.switch_module(m))
-            btn.bind('<ButtonPress-1>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent_light']))
             btn.bind('<ButtonRelease-1>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent']))
             btn.bind('<Enter>', lambda e, b=btn, m=mid: self._nav_hover_enter(m, b))
             btn.bind('<Leave>', lambda e, b=btn, m=mid: self._nav_hover_leave(m, b))
