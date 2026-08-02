@@ -102,8 +102,6 @@ class App(tk.Tk):
         self.switch_module('home')
         if seed_msg:
             self.set_status(seed_msg)
-        else:
-            self.set_status('')
 
     # ============================================================
     # 布局构建
@@ -143,7 +141,6 @@ class App(tk.Tk):
         left_pad.pack(side=tk.LEFT)
 
         self.nav_buttons = {}
-        self._nav_indicators = {}  # 导航指示条
         self._nav_indicator_frames = {}  # 指示条容器
         self._nav_containers = {}  # 导航按钮容器
         for mod in MODULES:
@@ -157,7 +154,6 @@ class App(tk.Tk):
             indicator_frame.pack_propagate(False)
             indicator_frame.pack_forget()  # 初始隐藏
             self._nav_indicator_frames[mod['id']] = indicator_frame
-            self._nav_indicators[mod['id']] = indicator_frame
 
             btn = tk.Label(
                 btn_container, text=mod['name'],
@@ -168,13 +164,15 @@ class App(tk.Tk):
             btn.pack()
             self.nav_buttons[mod['id']] = btn
 
-            # 点击事件绑定在容器上，确保整个区域（含指示条）都能响应点击
+            # 点击事件直接绑定在 Label 上（Tkinter 子控件事件不会冒泡到父 Frame）
             mid = mod['id']
-            btn_container.bind('<Button-1>', lambda e, m=mid: self.switch_module(m))
-            btn_container.bind('<ButtonPress-1>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent_light']))
-            btn_container.bind('<ButtonRelease-1>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent']))
-            btn_container.bind('<Enter>', lambda e, b=btn, c=btn_container, m=mid: self._nav_hover_enter(m, b, c))
-            btn_container.bind('<Leave>', lambda e, b=btn, c=btn_container, m=mid: self._nav_hover_leave(m, b, c))
+            btn.bind('<Button-1>', lambda e, m=mid: self.switch_module(m))
+            btn.bind('<ButtonPress-1>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent_light']))
+            btn.bind('<ButtonRelease-1>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent']))
+            btn.bind('<Enter>', lambda e, b=btn, m=mid: self._nav_hover_enter(m, b))
+            btn.bind('<Leave>', lambda e, b=btn, m=mid: self._nav_hover_leave(m, b))
+            # 指示条也响应点击，消除底部 3px 盲区
+            indicator_frame.bind('<Button-1>', lambda e, m=mid: self.switch_module(m))
 
         spacer = tk.Frame(self.nav_frame, bg=colors['bg_nav'])
         spacer.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -194,14 +192,14 @@ class App(tk.Tk):
         self.nav_sep = tk.Frame(self.nav_outer, bg=colors['border'], height=1)
         self.nav_sep.pack(side=tk.BOTTOM, fill=tk.X)
 
-    def _nav_hover_enter(self, module_id, btn, container):
+    def _nav_hover_enter(self, module_id, btn):
         """鼠标进入导航按钮区域"""
         colors = self.config.get_colors()
         active = getattr(self, '_active_module', None)
         if module_id != active:
             btn.configure(fg=colors['fg_accent'])
 
-    def _nav_hover_leave(self, module_id, btn, container):
+    def _nav_hover_leave(self, module_id, btn):
         """鼠标离开导航按钮区域"""
         colors = self.config.get_colors()
         active = getattr(self, '_active_module', None)
