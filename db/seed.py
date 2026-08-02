@@ -25,19 +25,19 @@ ALGORITHM_CATEGORIES = [
                     ('lang-seq', '顺序结构', '程序从上到下逐行执行', 1, 'entry'),
                     ('lang-if', '分支结构', 'if/else/switch条件判断', 1, 'entry'),
                     ('lang-loop', '循环结构', 'for/while循环与嵌套', 2, 'entry'),
-                    ('lang-array', '数组', '一维/二维数组的定义与使用', 2, 'entry'),
+                    ('lang-array', '数组', '一维/二维数组的定义与使用', 3, 'entry'),
                     ('lang-string-basic', '字符串入门', 'C风格字符数组与string类基础', 2, 'entry'),
                     ('lang-struct', '结构体', 'struct定义与使用', 3, 'entry'),
-                    ('lang-func', '函数与递归', '函数定义、参数传递、递归调用', 3, 'entry'),
+                    ('lang-func', '函数与递归', '函数定义、参数传递、递归调用', 2, 'entry'),
                 ]
             },
             {
                 'id': 'lang-stl', 'name': 'STL入门',
                 'desc': '标准模板库常用容器和算法',
                 'subtopics': [
-                    ('stl-vector', 'vector向量', '动态数组', 3, 'entry'),
+                    ('stl-vector', 'vector向量', '动态数组', 4, 'entry'),
                     ('stl-sort', 'STL排序', 'sort函数与自定义比较', 3, 'entry'),
-                    ('stl-map', 'map映射', '键值对存储', 4, 'entry'),
+                    ('stl-map', 'map映射', '键值对存储', 5, 'improve'),
                 ]
             },
         ]
@@ -53,7 +53,7 @@ ALGORITHM_CATEGORIES = [
                     ('basic-sim', '模拟', '按题意逐步实现', 1, 'entry'),
                     ('basic-greedy', '贪心', '局部最优→全局最优', 3, 'entry'),
                     ('basic-rec', '递推', '逐步推导，从小到大', 3, 'entry'),
-                    ('basic-binary', '二分', '有序序列O(logN)定位', 3, 'entry'),
+                    ('basic-binary', '二分', '有序序列O(logN)定位', 4, 'entry'),
                     ('basic-enum', '枚举', '穷举验证', 2, 'entry'),
                     ('basic-divide', '分治', '分解→解决→合并', 6, 'improve'),
                     ('basic-sort', '排序', '各类排序算法', 3, 'entry'),
@@ -69,8 +69,8 @@ ALGORITHM_CATEGORIES = [
                 'id': 'twoptr-all', 'name': '双指针技巧',
                 'desc': '四种经典模式',
                 'subtopics': [
-                    ('tp-opposite', '对撞指针', '两端向中间', 3, 'entry'),
-                    ('tp-same', '快慢指针', '同向不同速', 3, 'entry'),
+                    ('tp-opposite', '对撞指针', '两端向中间', 4, 'entry'),
+                    ('tp-same', '快慢指针', '同向不同速', 4, 'entry'),
                     ('tp-slide', '滑动窗口', '动态区间', 4, 'entry'),
                 ]
             },
@@ -84,16 +84,16 @@ ALGORITHM_CATEGORIES = [
                 'id': 'linear-core', 'name': '线性结构',
                 'desc': '基础线性数据结构',
                 'subtopics': [
-                    ('lin-stack', '栈', 'LIFO后进先出', 3, 'entry'),
-                    ('lin-queue', '队列', 'FIFO + 单调队列', 3, 'entry'),
-                    ('lin-list', '链表', '动态增删O(1)', 3, 'entry'),
+                    ('lin-stack', '栈', 'LIFO后进先出', 4, 'entry'),
+                    ('lin-queue', '队列', 'FIFO + 单调队列', 4, 'entry'),
+                    ('lin-list', '链表', '动态增删O(1)', 4, 'entry'),
                     ('lin-hash', '哈希表', 'O(1)查找', 5, 'improve'),
                     ('lin-prefix', '前缀和', 'O(1)区间和', 3, 'entry'),
                     ('lin-diff', '差分', 'O(1)区间修改', 4, 'entry'),
                     ('lin-st', 'ST表(RMQ)', 'O(NlogN)预处理/O(1)查询', 6, 'improve'),
                     ('lin-block', '分块', '√N优雅暴力', 7, 'improve'),
                     ('lin-mono-queue', '单调队列', '区间极值', 5, 'improve'),
-                    ('lin-mono-stack', '单调栈', '下一个更大/更小', 5, 'improve'),
+                    ('lin-mono-stack', '单调栈', '下一个更大/更小', 3, 'entry'),
                 ]
             },
         ]
@@ -110,7 +110,7 @@ ALGORITHM_CATEGORIES = [
                     ('tree-bit', '树状数组(BIT)', 'O(logN)单点改/区间查', 6, 'improve'),
                     ('tree-seg', '线段树', '区间操作瑞士军刀', 6, 'improve'),
                     ('tree-heap', '堆/优先队列', '极值维护', 5, 'improve'),
-                    ('tree-bal', '平衡树', 'Treap/Splay/AVL', 8, 'noi'),
+                    ('tree-bal', '平衡树', 'Treap/Splay/AVL', 8, 'improve'),
                     ('tree-trie', 'Trie字典树', '前缀检索', 6, 'improve'),
                     ('tree-lct', '动态树(LCT)', 'Link-Cut Tree', 10, 'noi'),
                     ('tree-pst', '可持久化线段树', '历史版本查询', 8, 'noi'),
@@ -137,7 +137,7 @@ ALGORITHM_CATEGORIES = [
                     ('tree-virt', '虚树', '稀疏关键点压缩', 8, 'noi'),
                     ('tree-dsu-on', '树上启发式合并', 'DSU on Tree', 7, 'improve'),
                     ('tree-base', '基环树', '树上加一条边', 8, 'noi'),
-                    ('tree-diam', '树的直径', '两次DFS或DP', 4, 'entry'),
+                    ('tree-diam', '树的直径', '两次DFS或DP', 6, 'improve'),
                 ]
             },
         ]
@@ -150,7 +150,7 @@ ALGORITHM_CATEGORIES = [
                 'id': 'graph-basic', 'name': '基础图论',
                 'desc': '图的遍历、最短路、MST',
                 'subtopics': [
-                    ('g-bfs', 'BFS广度优先搜索', '队列层序遍历', 5, 'entry'),
+                    ('g-bfs', 'BFS广度优先搜索', '队列层序遍历', 7, 'improve'),
                     ('g-dfs', 'DFS深度优先搜索', '递归+回溯', 5, 'entry'),
                     ('g-topo', '拓扑排序', 'DAG顶点线性序', 6, 'improve'),
                     ('g-dij', 'Dijkstra最短路', '非负权单源O((V+E)logV)', 6, 'improve'),
@@ -172,7 +172,7 @@ ALGORITHM_CATEGORIES = [
                     ('g-flow', '网络流(Dinic)', '最大流O(V²E)', 8, 'noi'),
                     ('g-mcmf', '最小费用最大流', 'SPFA/Dijkstra增广', 8, 'noi'),
                     ('g-bip', '二分图匹配', '匈牙利/KM算法', 8, 'noi'),
-                    ('g-diff', '差分约束', '不��式组→图论', 7, 'improve'),
+                    ('g-diff', '差分约束', '不��式组→图论', 4, 'entry'),
                 ]
             },
         ]
@@ -210,9 +210,9 @@ ALGORITHM_CATEGORIES = [
                     ('dp-knap', '背包DP', '0-1/完全/多重', 5, 'entry'),
                     ('dp-interval', '区间DP', '小区间→大区间', 5, 'entry'),
                     ('dp-tree2', '树形DP', '树上递推', 6, 'improve'),
-                    ('dp-linear', '线性DP', '序列递推', 4, 'entry'),
+                    ('dp-linear', '线性DP', '序列递推', 6, 'improve'),
                     ('dp-bitmask', '状压DP', '二进制表示状态', 6, 'improve'),
-                    ('dp-digit', '数位DP', '按位递推统计', 7, 'improve'),
+                    ('dp-digit', '数位DP', '按位递推统计', 4, 'entry'),
                     ('dp-contour', '轮廓线DP', '逐格转移', 8, 'noi'),
                 ]
             },
@@ -220,11 +220,11 @@ ALGORITHM_CATEGORIES = [
                 'id': 'dp-opt', 'name': 'DP优化',
                 'desc': '加速DP转移的高级技巧',
                 'subtopics': [
-                    ('dp-pq', '优先队列优化DP', '维护转移最优值', 6, 'improve'),
-                    ('dp-matrix', '矩阵加速DP', '常系数线性递推O(K³logN)', 6, 'improve'),
-                    ('dp-slope', '斜率优化', '凸包维护决策', 8, 'noi'),
+                    ('dp-pq', '优先队列优化DP', '维护转移最优值', 8, 'improve'),
+                    ('dp-matrix', '矩阵加速DP', '常系数线性递推O(K³logN)', 4, 'entry'),
+                    ('dp-slope', '斜率优化', '凸包维护决策', 8, 'improve'),
                     ('dp-wqs', 'WQS二分', '二分惩罚项', 9, 'noi'),
-                    ('dp-quad', '四边形不等式', '决策单调性加速', 8, 'noi'),
+                    ('dp-quad', '四边形不等式', '决策单调性加速', 8, 'improve'),
                     ('dp-ddp', '动态DP', '带修改的DP', 10, 'noi'),
                 ]
             },
@@ -258,24 +258,24 @@ ALGORITHM_CATEGORIES = [
                 'id': 'math-number', 'name': '数论',
                 'desc': '素数、同余、逆元、筛法',
                 'subtopics': [
-                    ('m-prime', '素数判定与筛法', '埃氏筛/欧拉筛', 5, 'improve'),
-                    ('m-gcd', 'GCD与LCM', '欧几里得算法', 4, 'entry'),
-                    ('m-mod', '模运算与逆元', '费马小定理/扩展欧几里得', 6, 'improve'),
+                    ('m-prime', '素数判定与筛法', '埃氏筛/欧拉筛', 4, 'entry'),
+                    ('m-gcd', 'GCD与LCM', '欧几里得算法', 3, 'entry'),
+                    ('m-mod', '模运算与逆元', '费马小定理/扩展欧几里得', 7, 'improve'),
                     ('m-crt', '中国剩余定理(CRT)', '同余方程组', 7, 'improve'),
-                    ('m-mobius', '莫比乌斯反演', '数论函数卷积', 8, 'noi'),
+                    ('m-mobius', '莫比乌斯反演', '数论函数卷积', 9, 'noi'),
                     ('m-bsgs', 'BSGS算法', '离散对数', 8, 'noi'),
-                    ('m-euler', '欧拉函数', 'φ(n)定义与应用', 6, 'improve'),
-                    ('m-linear-sieve', '线性筛', '筛积性函数', 7, 'improve'),
+                    ('m-euler', '欧拉函数', 'φ(n)定义与应用', 5, 'improve'),
+                    ('m-linear-sieve', '线性筛', '筛积性函数', 4, 'entry'),
                 ]
             },
             {
                 'id': 'math-combi', 'name': '组合数学',
                 'desc': '排列组合、容斥、卡特兰数',
                 'subtopics': [
-                    ('m-combi-basic', '排列组合基础', '阶乘/组合数', 5, 'entry'),
-                    ('m-catalan', '卡特兰数', '出栈序列/括号匹配', 6, 'improve'),
-                    ('m-incl-excl', '容斥原理', '集合计数', 7, 'improve'),
-                    ('m-stirling', '斯特林数', '集合划分/轮换', 8, 'noi'),
+                    ('m-combi-basic', '排列组合基础', '阶乘/组合数', 4, 'entry'),
+                    ('m-catalan', '卡特兰数', '出栈序列/括号匹配', 7, 'improve'),
+                    ('m-incl-excl', '容斥原理', '集合计数', 6, 'improve'),
+                    ('m-stirling', '斯特林数', '集合划分/轮换', 9, 'noi'),
                 ]
             },
         ]
@@ -288,10 +288,10 @@ ALGORITHM_CATEGORIES = [
                 'id': 'geo-all', 'name': '计算几何',
                 'desc': '基础计算几何算法',
                 'subtopics': [
-                    ('geo-vector', '向量运算', '点积/叉积/旋转', 5, 'improve'),
-                    ('geo-convex', '凸包', 'Graham/Andrew扫描', 6, 'improve'),
+                    ('geo-vector', '向量运算', '点积/叉积/旋转', 6, 'improve'),
+                    ('geo-convex', '凸包', 'Graham/Andrew扫描', 8, 'noi'),
                     ('geo-inter', '线段相交', '旋转卡壳', 7, 'improve'),
-                    ('geo-half', '半平面交', '求半平面交集', 8, 'noi'),
+                    ('geo-half', '半平面交', '求半平面交集', 9, 'noi'),
                     ('geo-triang', '三角剖分', 'Delaunay三角剖分', 9, 'noi'),
                 ]
             },
@@ -308,7 +308,7 @@ ALGORITHM_CATEGORIES = [
                     ('bit-basic', '基本位操作', '与或非异或移位', 3, 'entry'),
                     ('bit-lowbit', 'lowbit技巧', 'n & -n', 4, 'entry'),
                     ('bit-subset', '子集枚举', '二进制子集遍历', 5, 'improve'),
-                    ('bit-bitset', 'bitset优化', '常数/64优化', 6, 'improve'),
+                    ('bit-bitset', 'bitset优化', '常数/64优化', 5, 'improve'),
                 ]
             },
         ]
@@ -321,10 +321,10 @@ ALGORITHM_CATEGORIES = [
                 'id': 'game-all', 'name': '博弈论',
                 'desc': '公平组合游戏',
                 'subtopics': [
-                    ('game-nim', 'NIM游戏', '异或和判定', 5, 'improve'),
-                    ('game-sg', 'SG函数', '有向图游戏', 7, 'improve'),
+                    ('game-nim', 'NIM游戏', '异或和判定', 9, 'noi'),
+                    ('game-sg', 'SG函数', '有向图游戏', 9, 'noi'),
                     ('game-wythoff', '威佐夫博弈', '两堆石子', 7, 'improve'),
-                    ('game-composite', '组合游戏', '博弈DP', 8, 'noi'),
+                    ('game-composite', '组合游戏', '博弈DP', 4, 'entry'),
                 ]
             },
         ]
@@ -352,9 +352,9 @@ ALGORITHM_CATEGORIES = [
                 'id': 'poly-all', 'name': '多项式算法',
                 'desc': '多项式运算与变换',
                 'subtopics': [
-                    ('poly-fft', 'FFT', '快速傅里叶变换', 8, 'noi'),
-                    ('poly-ntt', 'NTT', '数论变换', 8, 'noi'),
-                    ('poly-fwt', 'FWT', '快速沃尔什变换', 9, 'noi'),
+                    ('poly-fft', 'FFT', '快速傅里叶变换', 10, 'noi'),
+                    ('poly-ntt', 'NTT', '数论变换', 10, 'noi'),
+                    ('poly-fwt', 'FWT', '快速沃尔什变换', 10, 'noi'),
                     ('poly-gf', '生成函数', '普通/指数型生成函数', 9, 'noi'),
                 ]
             },
@@ -397,12 +397,12 @@ ALGORITHM_CATEGORIES = [
                 'id': 'misc-all', 'name': '杂项技巧',
                 'desc': '竞赛中的各种实用技巧',
                 'subtopics': [
-                    ('misc-bigint', '高精度运算', '大整数加减乘除', 5, 'improve'),
+                    ('misc-bigint', '高精度运算', '大整数加减乘除', 4, 'entry'),
                     ('misc-offline', '离线查询', '莫队算法/整体二分', 8, 'noi'),
                     ('misc-construct', '构造题', '设计符合条件的解', 6, 'improve'),
                     ('misc-interact', '交互题', '与评判系统交互', 7, 'improve'),
                     ('misc-fastio', '快读快写', '优化大量IO', 4, 'entry'),
-                    ('misc-discrete', '离散化', '坐标压缩', 4, 'entry'),
+                    ('misc-discrete', '离散化', '坐标压缩', 6, 'improve'),
                 ]
             },
         ]
@@ -417,7 +417,7 @@ ALGORITHM_CATEGORIES = [
                 'subtopics': [
                     ('tool-compare', '对拍', '暴力+随机+批处理', 5, 'improve'),
                     ('tool-debug', '调试技巧', 'gdb/assert/输出调试', 4, 'entry'),
-                    ('tool-complex', '复杂度分析', '时间/空间复杂度', 3, 'entry'),
+                    ('tool-complex', '复杂度分析', '时间/空间复杂度', 6, 'improve'),
                 ]
             },
         ]
@@ -431,7 +431,7 @@ ALGORITHM_CATEGORIES = [
                 'desc': 'NOI级别进阶内容',
                 'subtopics': [
                     ('adv-lgv', 'LGV引理', '路径不交方案数', 10, 'noi'),
-                    ('adv-burnside', 'Burnside引理', '置换群计数', 10, 'noi'),
+                    ('adv-burnside', 'Burnside引理', '置换群计数', 9, 'noi'),
                     ('adv-prufer', 'Prufer序列', '生成树计数', 9, 'noi'),
                     ('adv-matroid', '拟阵', '贪心理论基础', 10, 'noi'),
                 ]
