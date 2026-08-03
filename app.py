@@ -19,6 +19,7 @@ MODULES = [
     {'id': 'mistakes',     'name': '易错集', 'shortcut': 'Ctrl+6'},
     {'id': 'plan',         'name': '练习',   'shortcut': 'Ctrl+7'},
     {'id': 'stats',        'name': '统计',   'shortcut': 'Ctrl+8'},
+    {'id': 'contest',      'name': '比赛',   'shortcut': 'Ctrl+9'},
 ]
 
 # 模块懒加载注册表：模块ID → (导入路径, 类名)
@@ -31,6 +32,7 @@ _MODULE_LOADER = {
     'mistakes':     ('modules.mistakes',     'MistakesModule'),
     'plan':         ('modules.plan',         'PlanModule'),
     'stats':        ('modules.stats',        'StatsModule'),
+    'contest':      ('modules.contest',      'ContestModule'),
 }
 
 

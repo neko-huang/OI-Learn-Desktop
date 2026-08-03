@@ -400,17 +400,18 @@ class PlanModule:
                     _global_problem_pool['cf'] = search_codeforces(limit=5000)  # 拉取全部
                     _global_problem_pool['cf_loaded'] = True
                 total = _global_problem_pool['cf']
-                # 排除已用过的
                 available = [p for p in total if p.get('platform_id', '') not in _used_ids]
                 if len(available) < count:
-                    _used_ids.clear()  # 池子用完，重新开始
+                    _used_ids.clear()
                     available = total
-                sample_n = min(count * 2, len(available))
+                # 有难度筛选时多采样，确保 count 个题目能通过筛选
+                sample_factor = 5 if diffs else 2
+                sample_n = min(count * sample_factor, len(available))
                 results = random.sample(available, sample_n) if len(available) >= sample_n else available
             elif source == 'atcoder':
                 if not _global_problem_pool['at_loaded']:
                     from services.fetcher import search_atcoder
-                    _global_problem_pool['at'] = search_atcoder(keyword='', limit=5000)  # 拉取全部
+                    _global_problem_pool['at'] = search_atcoder(keyword='', limit=5000)
                     _global_problem_pool['at_loaded'] = True
                 total = _global_problem_pool['at']
                 available = [p for p in total if p.get('platform_id', '') not in _used_ids]
@@ -420,6 +421,7 @@ class PlanModule:
                 sample_n = min(count * 2, len(available))
                 results = random.sample(available, sample_n) if len(available) >= sample_n else available
             else:
+                # local: 池子小，直接取全部可用题目
                 if not _global_problem_pool['local']:
                     from services.fetcher import search_local
                     _global_problem_pool['local'] = search_local()
@@ -430,8 +432,8 @@ class PlanModule:
                 if len(available) < count:
                     _used_ids.clear()
                     available = total
-                sample_n = min(count * 2, len(available))
-                results = random.sample(available, sample_n) if len(available) >= sample_n else available
+                # 本地题目少时取全部，之后难度筛选还能保留
+                results = available[:]
 
             # 标记已用
             for r in results:
@@ -448,6 +450,7 @@ class PlanModule:
                     continue
                 seen.add(rid)
                 unique.append(r)
+            # 精确取 count 个，不足时返回全部可用
             results = unique[:count]
 
             self.parent.after(0, lambda: self._on_gen_results(results))

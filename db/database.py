@@ -223,3 +223,34 @@ def migrate():
 # 注意：不再在 import 时自动建表
 # 数据库初始化由 app.py 的 App.__init__ 显式调用
 # ============================================================
+# v1.3: 比赛记录表
+    conn3 = get_connection()
+    try:
+        conn3.execute("""
+            CREATE TABLE IF NOT EXISTS contests (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform        TEXT    NOT NULL,          -- Codeforces / AtCoder / 洛谷 / 其他
+                contest_id      TEXT    DEFAULT '',        -- 比赛编号
+                contest_name    TEXT    NOT NULL DEFAULT '',-- 比赛名称
+                contest_type    TEXT    DEFAULT '',        -- 类型: rated/unrated/virtual
+                contest_date    TEXT    NOT NULL DEFAULT '',-- 比赛日期 YYYY-MM-DD
+                duration_min    INTEGER DEFAULT 0,        -- 时长(分钟)
+                rank            INTEGER DEFAULT 0,        -- 排名
+                total_participants INTEGER DEFAULT 0,     -- 参赛人数
+                rating_before   INTEGER DEFAULT 0,        -- 赛前Rating
+                rating_after    INTEGER DEFAULT 0,        -- 赛后Rating
+                rating_change   INTEGER DEFAULT 0,        -- Rating变化
+                solved_count    INTEGER DEFAULT 0,        -- 通过题数
+                total_problems  INTEGER DEFAULT 0,        -- 总题数
+                performance     INTEGER DEFAULT 0,        -- 表现分
+                review          TEXT    DEFAULT '',        -- 复盘笔记 Markdown
+                created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+        """)
+        conn3.execute("CREATE INDEX IF NOT EXISTS idx_contests_platform ON contests(platform)")
+        conn3.execute("CREATE INDEX IF NOT EXISTS idx_contests_date ON contests(contest_date)")
+        conn3.commit()
+    except Exception:
+        pass
+    conn3.close()

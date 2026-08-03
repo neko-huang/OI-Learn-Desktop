@@ -207,8 +207,26 @@ class OutlineModule:
     # 树
     # ============================================================
 
+    def _delete_all_tree_items(self):
+        """递归删除所有树节点，包括 detach 后不可见的孤儿节点，
+        避免多次点击难度筛选后元素消失"""
+        # 用集合记录所有已见过的 iid
+        all_iids = set()
+        def _collect(parent):
+            for child in self.tree.get_children(parent):
+                all_iids.add(child)
+                _collect(child)
+        _collect('')
+        # 从叶子节点开始删除，避免父节点删除时子节点被跳过
+        for iid in all_iids:
+            try:
+                if self.tree.exists(iid):
+                    self.tree.delete(iid)
+            except tk.TclError:
+                pass
+
     def _populate_tree(self):
-        self.tree.delete(*self.tree.get_children())
+        self._delete_all_tree_items()
 
         # 为每个等级配置 tag 颜色
         for lvl_key, lvl_info in LEVEL_DISPLAY.items():
