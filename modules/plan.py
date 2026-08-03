@@ -26,7 +26,13 @@ def _build_problem_url(platform: str, platform_id: str) -> str:
         return ''
     p = platform.lower()
     if 'atcoder' in p:
-        return f'https://atcoder.jp/contests/abc/tasks/{platform_id}'
+        # platform_id 格式: {contest_id}_{problem_index}，如 agc039_b
+        last_underscore = platform_id.rfind('_')
+        if last_underscore > 0:
+            contest_id = platform_id[:last_underscore]
+        else:
+            contest_id = 'abc'  # fallback
+        return f'https://atcoder.jp/contests/{contest_id}/tasks/{platform_id}'
     if 'codeforces' in p or 'cf' == p:
         cid, idx = '', ''
         for ch in platform_id:
