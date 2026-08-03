@@ -57,6 +57,7 @@ class PlanModule:
 
         self._build_ui()
         self._refresh_list()
+        self._restore_practice_state()
 
     # ============================================================
     # UI 框架
@@ -319,7 +320,7 @@ class PlanModule:
 
                     lbl = tk.Label(row_frame, text=name,
                                    font=(self.config.get('font_family'), 9),
-                                   bg=colors['bg_sidebar'], fg=colors['fg_primary'],
+                                   bg=colors['bg_tag'], fg=colors['fg_primary'],
                                    relief=tk.FLAT, padx=6, pady=2, cursor='hand2')
                     lbl.pack(side=tk.LEFT, padx=1, pady=1)
                     lbl.bind('<Button-1>', self._make_tag_toggle(var, lbl))
@@ -334,9 +335,9 @@ class PlanModule:
             var.set(not var.get())
             colors = self.config.get_colors()
             if var.get():
-                lbl.configure(bg=colors['fg_accent'], fg='#ffffff')
+                lbl.configure(bg=colors['bg_tag_active'], fg=colors['fg_on_accent'])
             else:
-                lbl.configure(bg=colors['bg_sidebar'], fg=colors['fg_primary'])
+                lbl.configure(bg=colors['bg_tag'], fg=colors['fg_primary'])
         return handler
 
     def _build_gen_diffs(self):
@@ -355,7 +356,7 @@ class PlanModule:
 
             lbl = tk.Label(row_frame, text=d,
                            font=(self.config.get('font_family'), 9),
-                           bg=colors['bg_sidebar'], fg=colors['fg_primary'],
+                           bg=colors['bg_tag'], fg=colors['fg_primary'],
                            relief=tk.FLAT, padx=8, pady=3, cursor='hand2')
             lbl.pack(side=tk.LEFT, padx=2, pady=2)
             lbl.bind('<Button-1>', self._make_tag_toggle(var, lbl))
@@ -427,7 +428,14 @@ class PlanModule:
                     _global_problem_pool['local'] = search_local()
                 total = _global_problem_pool['local']
                 if tags:
-                    total = [p for p in total if any(t.lower() in p.get('title', '').lower() for t in tags)]
+                    # 通过 tags 字段匹配，而非标题
+                    def _problem_matches_tags(p):
+                        try:
+                            p_tags = json.loads(p.get('tags_str', '[]'))
+                        except (json.JSONDecodeError, TypeError):
+                            p_tags = []
+                        return any(t in p_tags for t in tags)
+                    total = [p for p in total if _problem_matches_tags(p)]
                 available = [p for p in total if p.get('platform_id', '') not in _used_ids]
                 if len(available) < count:
                     _used_ids.clear()
@@ -745,10 +753,11 @@ class PlanModule:
             return
         try:
             conn = get_connection()
-            max_order = conn.execute("SELECT MAX(sort_order) FROM plan_problems WHERE plan_id=?",
+            max_order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) as max_order FROM plan_problems WHERE plan_id=?",
                                       (self._current_id,)).fetchone()
+            next_order = max_order['max_order'] + 1
             conn.execute("INSERT INTO plan_problems (plan_id, title, sort_order) VALUES (?,?,?)",
-                          (self._current_id, title, (max_order[0] or 0) + 1))
+                          (self._current_id, title, next_order))
             conn.commit()
             conn.close()
             dialog.destroy()
@@ -818,9 +827,9 @@ class PlanModule:
                 return
             try:
                 conn = get_connection()
-                max_order = conn.execute("SELECT MAX(sort_order) FROM plan_problems WHERE plan_id=?",
+                max_order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) as max_order FROM plan_problems WHERE plan_id=?",
                                           (self._current_id,)).fetchone()
-                next_order = (max_order[0] or 0) + 1
+                next_order = max_order['max_order'] + 1
                 for idx in sel:
                     pid = _local_ids[idx]
                     row = conn.execute("SELECT * FROM problems WHERE id=?", (pid,)).fetchone()
@@ -974,9 +983,9 @@ class PlanModule:
             try:
                 conn = get_connection()
                 max_order = conn.execute(
-                    "SELECT MAX(sort_order) FROM plan_problems WHERE plan_id=?",
+                    "SELECT COALESCE(MAX(sort_order), 0) as max_order FROM plan_problems WHERE plan_id=?",
                     (self._current_id,)).fetchone()
-                next_order = (max_order[0] or 0) + 1
+                next_order = max_order['max_order'] + 1
                 for p in results:
                     conn.execute(
                         "INSERT INTO plan_problems (plan_id, platform, platform_id, title, difficulty, sort_order) VALUES (?,?,?,?,?,?)",
@@ -1062,6 +1071,7 @@ class PlanModule:
                 self.timer_label.config(text='自由练习')
 
             self._refresh_active_list()
+            self._save_practice_state()
         except Exception as e:
             self.app.set_status(f'开始失败: {e}')
 
@@ -1072,6 +1082,9 @@ class PlanModule:
             s = self._remaining_sec % 60
             self.timer_label.config(text=f'{h:02d}:{m:02d}:{s:02d}')
             self._remaining_sec -= 1
+            # 每 30 秒保存一次状态
+            if self._remaining_sec % 30 == 0:
+                self._save_practice_state()
             self._timer_id = self.parent.after(1000, self._update_timer)
         else:
             self.timer_label.config(text='00:00:00')
@@ -1104,10 +1117,21 @@ class PlanModule:
             btn.pack(side=tk.LEFT)
             btn.bind('<Button-1>', lambda e, idx=i: self._toggle_active(idx))
 
-            tk.Label(rf, text=f'{i+1}. {item["title"]}',
+            # 标题可点击 → 跳转到平台题目页
+            title_lbl = tk.Label(rf, text=f'{i+1}. {item["title"]}',
                      font=(self.config.get('font_family'), 13),
-                     bg=colors['bg_main'], fg=colors['fg_primary'], anchor=tk.W
-                     ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8)
+                     bg=colors['bg_main'], fg=colors['fg_primary'], anchor=tk.W,
+                     cursor='hand2')
+            title_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8)
+            plat = item.get('platform', '')
+            pid = item.get('platform_id', '')
+            if pid:
+                url = _build_problem_url(plat, pid)
+                if url:
+                    import webbrowser
+                    title_lbl.bind('<Button-1>', lambda e, u=url: webbrowser.open(u))
+                    title_lbl.bind('<Enter>', lambda e, l=title_lbl: l.configure(fg=colors['fg_link']))
+                    title_lbl.bind('<Leave>', lambda e, l=title_lbl: l.configure(fg=colors['fg_primary']))
 
             if item.get('platform_id'):
                 tk.Label(rf, text=item['platform_id'], font=(self.config.get('font_family'), 10),
@@ -1125,12 +1149,91 @@ class PlanModule:
         except Exception:
             pass
         self._refresh_active_list()
+        self._save_practice_state()
 
     def _finish_practice(self):
         self._stop_timer()
+        self._clear_practice_state()
         self._show_frame('view')
         self._load_view()
         self.app.set_status('练习已结束')
+
+    # ============================================================
+    # 练习状态持久化
+    # ============================================================
+
+    def _save_practice_state(self):
+        """保存当前练习状态到数据库"""
+        if not self._current_id:
+            return
+        try:
+            conn = get_connection()
+            # 先清除旧状态
+            conn.execute("DELETE FROM practice_state")
+            conn.execute(
+                "INSERT INTO practice_state (plan_id, remaining_sec) VALUES (?,?)",
+                (self._current_id, self._remaining_sec))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+    def _clear_practice_state(self):
+        """清除数据库中保存的练习状态"""
+        try:
+            conn = get_connection()
+            conn.execute("DELETE FROM practice_state")
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+    def _restore_practice_state(self):
+        """恢复上次未完成的练习状态"""
+        try:
+            conn = get_connection()
+            row = conn.execute("SELECT * FROM practice_state ORDER BY id DESC LIMIT 1").fetchone()
+            conn.close()
+            if not row:
+                return
+            # 检查对应练习计划是否还存在
+            conn2 = get_connection()
+            plan = conn2.execute("SELECT * FROM practice_plans WHERE id=?", (row['plan_id'],)).fetchone()
+            if not plan:
+                conn2.close()
+                self._clear_practice_state()
+                return
+            plan = dict(plan)
+            items = conn2.execute(
+                "SELECT * FROM plan_problems WHERE plan_id=? ORDER BY sort_order, id",
+                (row['plan_id'],)).fetchall()
+            conn2.close()
+            if not items:
+                self._clear_practice_state()
+                return
+
+            # 恢复状态：选中该计划，进入练习中模式
+            self._current_id = row['plan_id']
+            self._show_frame('active')
+            self._active_items = [dict(it) for it in items]
+            self._remaining_sec = row['remaining_sec']
+
+            if plan.get('practice_mode') == 'timed' and self._remaining_sec > 0:
+                self._update_timer()
+            else:
+                self._remaining_sec = 0
+                self.timer_label.config(text='自由练习')
+
+            self._refresh_active_list()
+            # 高亮左侧列表条目
+            for idx, pid in enumerate(self._ids or []):
+                if pid == self._current_id:
+                    self.listbox.selection_clear(0, tk.END)
+                    self.listbox.selection_set(idx)
+                    self.listbox.see(idx)
+                    break
+        except Exception:
+            pass
 
     def _remove_item(self, item_id):
         try:
@@ -1164,7 +1267,8 @@ class PlanModule:
         self._start_new()
 
     def on_before_leave(self):
-        pass
+        if self._mode == 'active':
+            self._save_practice_state()
 
     def apply_theme(self):
         for w in self.parent.winfo_children():

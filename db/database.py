@@ -254,3 +254,21 @@ def migrate():
     except Exception:
         pass
     conn3.close()
+
+    # v1.4: 练习状态持久化
+    conn4 = get_connection()
+    try:
+        conn4.execute("""
+            CREATE TABLE IF NOT EXISTS practice_state (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                plan_id         INTEGER NOT NULL,
+                started_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                remaining_sec   INTEGER DEFAULT 0,
+                last_updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (plan_id) REFERENCES practice_plans(id) ON DELETE CASCADE
+            )
+        """)
+        conn4.commit()
+    except Exception:
+        pass
+    conn4.close()

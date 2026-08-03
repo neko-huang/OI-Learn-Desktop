@@ -256,7 +256,7 @@ class OutlineModule:
                                       tags=('subtopic', f'level_{sub_level}'),
                                       iid=sub_id)
                 if not topic_visible:
-                    self.tree.detach(topic_node)
+                    self.tree.delete(topic_node)
                 else:
                     has_visible = True
 
@@ -276,7 +276,7 @@ class OutlineModule:
                                       iid=tid)
 
             if not has_visible:
-                self.tree.detach(cat_node)
+                self.tree.delete(cat_node)
 
         self.tree.tag_configure('category', font=(self.config.get('font_family'), 12, 'bold'))
         self.tree.tag_configure('topic', font=(self.config.get('font_family'), 11))
