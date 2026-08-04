@@ -257,7 +257,18 @@ class EncyclopediaModule:
         ttk.Combobox(
             meta_row, textvariable=self.edit_cat_var, values=CATEGORIES,
             state='readonly', width=15,
-        ).pack(side=tk.LEFT, padx=(4, 16))
+        ).pack(side=tk.LEFT, padx=(4, 8))
+
+        tk.Label(meta_row, text='标签:', font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_main'], fg=colors['fg_secondary']).pack(side=tk.LEFT, padx=(8, 4))
+
+        self.edit_tags_var = tk.StringVar()
+        tk.Entry(
+            meta_row, textvariable=self.edit_tags_var,
+            font=(self.config.get('font_family'), 10),
+            bg=colors['bg_input'], fg=colors['fg_primary'],
+            relief=tk.FLAT, bd=1,
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
 
         # Markdown 编辑器（纯文本框）
         self.edit_text = tk.Text(
@@ -374,12 +385,13 @@ class EncyclopediaModule:
                 self._enter_edit_mode(
                     entry.get('title', ''),
                     entry.get('category', ''),
-                    entry.get('content', '')
+                    entry.get('content', ''),
+                    entry.get('tags', '')
                 )
         else:
             self._cancel_edit()
 
-    def _enter_edit_mode(self, title: str, category: str, content: str):
+    def _enter_edit_mode(self, title: str, category: str, content: str, tags: str = ''):
         """进入编辑模式"""
         self.view_mode = False
         self.edit_btn.config(text='查看')
@@ -391,6 +403,7 @@ class EncyclopediaModule:
         # 填充编辑器
         self.edit_title_var.set(title)
         self.edit_cat_var.set(category)
+        self.edit_tags_var.set(tags)
         self.edit_text.delete('1.0', tk.END)
         self.edit_text.insert('1.0', content)
 
@@ -416,9 +429,10 @@ class EncyclopediaModule:
             messagebox.showwarning('提示', '请输入标题')
             return
         category = self.edit_cat_var.get()
+        tags = self.edit_tags_var.get().strip()
         content = self.edit_text.get('1.0', tk.END).strip()
 
-        if self._save_entry(title, category, content):
+        if self._save_entry(title, category, content, tags):
             self.view_mode = True
             self.edit_btn.config(text='编辑')
             self.editor_frame.pack_forget()

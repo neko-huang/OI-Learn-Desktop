@@ -40,7 +40,7 @@ class StatsModule:
 
         self.inner = tk.Frame(canvas, bg=colors['bg_main'])
         canvas.create_window((0, 0), window=self.inner, anchor=tk.NW)
-        canvas.bind('<Configure>', lambda e: canvas.itemconfig(canvas.find_withtag('all')[0] if canvas.find_withtag('all') else None, width=e.width))
+        canvas.bind('<Configure>', lambda e: canvas.itemconfig(canvas.find_all()[0], width=e.width))
         self.inner.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
 
         # 标题

@@ -223,7 +223,7 @@ class ProblemsModule:
         self.edit_canvas.create_window((0, 0), window=self.edit_inner, anchor=tk.NW)
         self.edit_canvas.configure(yscrollcommand=self.edit_scroll.set)
         self.edit_inner.bind('<Configure>', lambda e: self.edit_canvas.configure(scrollregion=self.edit_canvas.bbox('all')))
-        self.edit_canvas.bind('<Configure>', lambda e: self.edit_canvas.itemconfig(self.edit_canvas.find_withtag('all')[0] if self.edit_canvas.find_all() else None, width=e.width))
+        self.edit_canvas.bind('<Configure>', lambda e: self.edit_canvas.itemconfig(self.edit_canvas.find_all()[0], width=e.width))
         self._build_edit_mode()
         self.empty_frame = tk.Frame(self.right_wrapper, bg=colors['bg_main'])
         tk.Label(self.empty_frame, text='选择一个题目查看\n或点击「+ 新建题目」录入',
@@ -631,6 +631,7 @@ class ProblemsModule:
         inner.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
 
         def _refresh_tags_list():
+            nonlocal inner, search_var, canvas
             for w in inner.winfo_children():
                 w.destroy()
             s = search_var.get().lower().strip()
@@ -666,6 +667,8 @@ class ProblemsModule:
                         bg=colors['bg_tag'] if sel else colors['bg_main'],
                         fg=colors['fg_link'] if sel else colors['fg_primary']))
 
+        self._tag_picker_refresh = _refresh_tags_list
+
         def _on_close():
             dialog.destroy()
             self._render_tag_chips()
@@ -689,12 +692,10 @@ class ProblemsModule:
         else:
             self.e_selected_tags.append(tag_name)
         self._mark_dirty()
-        # 刷新当前对话框
-        for child in self.parent.winfo_children():
-            if isinstance(child, tk.Toplevel) and child.title() == '选择标签':
-                # 重新渲染：调用 _open_tag_picker 不合适，简单刷新
-                break
         self._render_tag_chips()
+        # 刷新标签选择对话框中的按钮颜色
+        if hasattr(self, '_tag_picker_refresh'):
+            self._tag_picker_refresh()
 
     # ============================================================
     # 编辑表单填充/清空

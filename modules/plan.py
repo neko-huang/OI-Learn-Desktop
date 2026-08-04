@@ -696,6 +696,15 @@ class PlanModule:
                         title_lbl.bind('<Button-1>', lambda e, u=url: webbrowser.open(u))
                         title_lbl.bind('<Enter>', lambda e, l=title_lbl: l.configure(fg=colors['fg_link']))
                         title_lbl.bind('<Leave>', lambda e, l=title_lbl: l.configure(fg=colors['fg_primary']))
+                    else:
+                        title_lbl.bind('<Enter>', lambda e, l=title_lbl: l.configure(fg=colors['fg_muted']))
+                        title_lbl.bind('<Leave>', lambda e, l=title_lbl: l.configure(fg=colors['fg_primary']))
+                        title_lbl.bind('<Button-1>', lambda e: self.app.set_status('无法跳转：缺少平台信息或ID格式不完整'))
+                else:
+                    # 无平台ID，点击提示无法跳转
+                    title_lbl.bind('<Enter>', lambda e, l=title_lbl: l.configure(fg=colors['fg_muted']))
+                    title_lbl.bind('<Leave>', lambda e, l=title_lbl: l.configure(fg=colors['fg_primary']))
+                    title_lbl.bind('<Button-1>', lambda e: self.app.set_status('无法跳转：该题目未设置平台ID'))
 
                 if pid:
                     tk.Label(rf, text=pid, font=(self.config.get('font_family'), 9),
@@ -1138,6 +1147,14 @@ class PlanModule:
                     title_lbl.bind('<Button-1>', lambda e, u=url: webbrowser.open(u))
                     title_lbl.bind('<Enter>', lambda e, l=title_lbl: l.configure(fg=colors['fg_link']))
                     title_lbl.bind('<Leave>', lambda e, l=title_lbl: l.configure(fg=colors['fg_primary']))
+                else:
+                    title_lbl.bind('<Enter>', lambda e, l=title_lbl: l.configure(fg=colors['fg_muted']))
+                    title_lbl.bind('<Leave>', lambda e, l=title_lbl: l.configure(fg=colors['fg_primary']))
+                    title_lbl.bind('<Button-1>', lambda e: self.app.set_status('无法跳转：缺少平台信息或ID格式不完整'))
+            else:
+                title_lbl.bind('<Enter>', lambda e, l=title_lbl: l.configure(fg=colors['fg_muted']))
+                title_lbl.bind('<Leave>', lambda e, l=title_lbl: l.configure(fg=colors['fg_primary']))
+                title_lbl.bind('<Button-1>', lambda e: self.app.set_status('无法跳转：该题目未设置平台ID'))
 
             if item.get('platform_id'):
                 tk.Label(rf, text=item['platform_id'], font=(self.config.get('font_family'), 10),

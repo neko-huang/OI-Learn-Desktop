@@ -218,6 +218,12 @@ def migrate():
     # 自动初始化时也执行迁移
     _run_migrations = True
 
+    # 启动后自动备份一次
+    try:
+        backup_database()
+    except Exception:
+        pass
+
 
 # ============================================================
 # 注意：不再在 import 时自动建表
@@ -272,3 +278,44 @@ def migrate():
     except Exception:
         pass
     conn4.close()
+# ============================================================
+# 数据库备份
+# ============================================================
+
+def backup_database():
+    """自动备份数据库到 data/backup/ 目录，保留最近 7 份"""
+    import shutil
+    from datetime import datetime
+
+    db_dir = os.path.dirname(DB_PATH)
+    backup_dir = os.path.join(db_dir, 'backup')
+    os.makedirs(backup_dir, exist_ok=True)
+
+    now = datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup_path = os.path.join(backup_dir, f'info-learn_backup_{now}.db')
+
+    try:
+        # 使用 WAL 模式下的安全备份
+        conn = get_connection()
+        backup_conn = sqlite3.connect(backup_path)
+        conn.backup(backup_conn)
+        backup_conn.close()
+        conn.close()
+    except Exception:
+        # 回退到文件复制
+        try:
+            shutil.copy2(DB_PATH, backup_path)
+        except Exception:
+            return
+
+    # 清理旧备份，保留最近 7 份
+    try:
+        backups = sorted([
+            os.path.join(backup_dir, f)
+            for f in os.listdir(backup_dir)
+            if f.startswith('info-learn_backup_') and f.endswith('.db')
+        ])
+        while len(backups) > 7:
+            os.remove(backups.pop(0))
+    except Exception:
+        pass

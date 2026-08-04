@@ -187,10 +187,8 @@ class HomeModule:
             if dt == today:
                 bg = colors['fg_accent']
                 fg = '#ffffff'
-            elif dt_str == last_date or (last_date and dt_str <= last_date and 
-                                          dt >= date.fromisoformat(last_date.replace(last_date, last_date))):
-                # 只高亮实际签到的日期，不再用字符串比较
-                # 检查该日期是否在连续签到区间内
+            elif last_date:
+                # 高亮连续签到区间内的所有日期
                 try:
                     last_d = date.fromisoformat(last_date)
                     streak = self.config.get('checkin_streak', 0)
