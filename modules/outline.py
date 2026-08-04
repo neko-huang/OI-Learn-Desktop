@@ -7,6 +7,7 @@
 """
 
 import json
+import time
 import webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -44,6 +45,7 @@ class OutlineModule:
             w.destroy()
 
         self._combined_topics = {}  # 合并内置+自定义条目
+        self._current_item_id = None
         self._load_data()
         self._build_ui()
 
@@ -116,6 +118,14 @@ class OutlineModule:
         scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.configure(yscrollcommand=scrollbar.set)
+
+        # 一次性配置 tag 样式（避免每次 _populate_tree 重复配置）
+        for lvl_key, lvl_info in LEVEL_DISPLAY.items():
+            self.tree.tag_configure(f'level_{lvl_key}', foreground=lvl_info['color'])
+        self.tree.tag_configure('category', font=(self.config.get('font_family'), 12, 'bold'))
+        self.tree.tag_configure('topic', font=(self.config.get('font_family'), 11))
+        self.tree.tag_configure('subtopic', font=(self.config.get('font_family'), 10))
+        self.tree.tag_configure('custom', font=(self.config.get('font_family'), 10), foreground='#534AB7')
 
         self.tree.bind('<<TreeviewSelect>>', self._on_select)
         self.tree.bind('<Button-3>', self._on_right_click)  # 右键菜单
@@ -208,29 +218,11 @@ class OutlineModule:
     # ============================================================
 
     def _delete_all_tree_items(self):
-        """递归删除所有树节点，包括 detach 后不可见的孤儿节点，
-        避免多次点击难度筛选后元素消失"""
-        # 用集合记录所有已见过的 iid
-        all_iids = set()
-        def _collect(parent):
-            for child in self.tree.get_children(parent):
-                all_iids.add(child)
-                _collect(child)
-        _collect('')
-        # 从叶子节点开始删除，避免父节点删除时子节点被跳过
-        for iid in all_iids:
-            try:
-                if self.tree.exists(iid):
-                    self.tree.delete(iid)
-            except tk.TclError:
-                pass
+        """删除所有树节点"""
+        self.tree.delete(*self.tree.get_children(''))
 
     def _populate_tree(self):
         self._delete_all_tree_items()
-
-        # 为每个等级配置 tag 颜色
-        for lvl_key, lvl_info in LEVEL_DISPLAY.items():
-            self.tree.tag_configure(f'level_{lvl_key}', foreground=lvl_info['color'])
 
         for cat in self.categories:
             cat_node = self.tree.insert('', tk.END, text=cat['name'],
@@ -277,11 +269,6 @@ class OutlineModule:
 
             if not has_visible:
                 self.tree.delete(cat_node)
-
-        self.tree.tag_configure('category', font=(self.config.get('font_family'), 12, 'bold'))
-        self.tree.tag_configure('topic', font=(self.config.get('font_family'), 11))
-        self.tree.tag_configure('subtopic', font=(self.config.get('font_family'), 10))
-        self.tree.tag_configure('custom', font=(self.config.get('font_family'), 10), foreground='#534AB7')
 
     # ============================================================
     # 进度
@@ -430,13 +417,23 @@ class OutlineModule:
             try:
                 diff = int(diff_var.get())
                 level = REV_LEVEL_MAP.get(lvl_var.get(), 'entry')
-                topic_id = f'custom_{name}_{len(self._custom_topics)}'
+                topic_id = f'custom_{int(time.time_ns())}'
                 desc = desc_text.get('1.0', tk.END).strip()
 
                 # 获取父节点的分类名
                 cat_name = '自定义'
                 if parent_id in self._topic_map:
                     cat_name = self._topic_map[parent_id].get('category_name', '自定义')
+                else:
+                    # 遍历分类查找父节点名称
+                    for cat in self.categories:
+                        if cat['id'] == parent_id:
+                            cat_name = cat['name']
+                            break
+                        for topic in cat['topics']:
+                            if topic['id'] == parent_id:
+                                cat_name = cat['name']
+                                break
 
                 conn = get_connection()
                 conn.execute(
@@ -642,7 +639,8 @@ class OutlineModule:
         name = info['name']
         level_key = info.get('level', 'entry')
         badge = self._level_badge(level_key)
-        self.tree.item(item_id, text=f'{symbol} {name}  [{badge}]')
+        prefix = '✎ ' if item_id in self._custom_topics else ''
+        self.tree.item(item_id, text=f'{symbol} {prefix}{name}  [{badge}]')
 
         status_name, fg, bg = MASTERY_MAP[new_mastery]
         self.mastery_label.config(text=status_name, fg=fg, bg=bg)

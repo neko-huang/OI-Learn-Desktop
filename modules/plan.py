@@ -7,12 +7,15 @@
 
 import json
 import random
+import re
 import threading
 import tkinter as tk
+import webbrowser
 
 # 全局题目池缓存（一次拉取所有题目，多次随机采样，跟踪已用避免重复）
 _global_problem_pool = {'cf': [], 'at': [], 'local': [], 'cf_loaded': False, 'at_loaded': False}
 _used_ids = set()  # 本 session 已生成的题号，避免重复出现
+_pool_lock = threading.Lock()  # 保护全局变量线程安全
 from tkinter import ttk, messagebox
 
 from config import Config
@@ -402,37 +405,39 @@ class PlanModule:
                     r = search_luogu(keyword=tag, limit=count * 10)
                     results.extend(r)
             elif source == 'codeforces':
-                if not _global_problem_pool['cf_loaded']:
-                    from services.fetcher import search_codeforces
-                    _global_problem_pool['cf'] = search_codeforces(limit=5000)  # 拉取全部
-                    _global_problem_pool['cf_loaded'] = True
-                total = _global_problem_pool['cf']
-                available = [p for p in total if p.get('platform_id', '') not in _used_ids]
-                if len(available) < count:
-                    _used_ids.clear()
-                    available = total
-                # 有难度筛选时多采样，确保 count 个题目能通过筛选
-                sample_factor = 5 if diffs else 2
-                sample_n = min(count * sample_factor, len(available))
-                results = random.sample(available, sample_n) if len(available) >= sample_n else available
+                with _pool_lock:
+                    if not _global_problem_pool['cf_loaded']:
+                        from services.fetcher import search_codeforces
+                        _global_problem_pool['cf'] = search_codeforces(limit=5000)
+                        _global_problem_pool['cf_loaded'] = True
+                    total = _global_problem_pool['cf']
+                    available = [p for p in total if p.get('platform_id', '') not in _used_ids]
+                    if len(available) < count:
+                        _used_ids.clear()
+                        available = total
+                    sample_factor = 5 if diffs else 2
+                    sample_n = min(count * sample_factor, len(available))
+                    results = random.sample(available, sample_n) if len(available) >= sample_n else available
             elif source == 'atcoder':
-                if not _global_problem_pool['at_loaded']:
-                    from services.fetcher import search_atcoder
-                    _global_problem_pool['at'] = search_atcoder(keyword='', limit=5000)
-                    _global_problem_pool['at_loaded'] = True
-                total = _global_problem_pool['at']
-                available = [p for p in total if p.get('platform_id', '') not in _used_ids]
-                if len(available) < count:
-                    _used_ids.clear()
-                    available = total
-                sample_n = min(count * 2, len(available))
-                results = random.sample(available, sample_n) if len(available) >= sample_n else available
+                with _pool_lock:
+                    if not _global_problem_pool['at_loaded']:
+                        from services.fetcher import search_atcoder
+                        _global_problem_pool['at'] = search_atcoder(keyword='', limit=5000)
+                        _global_problem_pool['at_loaded'] = True
+                    total = _global_problem_pool['at']
+                    available = [p for p in total if p.get('platform_id', '') not in _used_ids]
+                    if len(available) < count:
+                        _used_ids.clear()
+                        available = total
+                    sample_n = min(count * 2, len(available))
+                    results = random.sample(available, sample_n) if len(available) >= sample_n else available
             else:
                 # local: 池子小，直接取全部可用题目
-                if not _global_problem_pool['local']:
-                    from services.fetcher import search_local
-                    _global_problem_pool['local'] = search_local()
-                total = _global_problem_pool['local']
+                with _pool_lock:
+                    if not _global_problem_pool['local']:
+                        from services.fetcher import search_local
+                        _global_problem_pool['local'] = search_local()
+                    total = _global_problem_pool['local']
                 if tags:
                     # 通过 tags 字段匹配，而非标题
                     def _problem_matches_tags(p):
@@ -442,18 +447,14 @@ class PlanModule:
                             p_tags = []
                         return any(t in p_tags for t in tags)
                     total = [p for p in total if _problem_matches_tags(p)]
-                available = [p for p in total if p.get('platform_id', '') not in _used_ids]
-                if len(available) < count:
-                    _used_ids.clear()
-                    available = total
-                # 本地题目少时取全部，之后难度筛选还能保留
-                results = available[:]
+                with _pool_lock:
+                    available = [p for p in total if p.get('platform_id', '') not in _used_ids]
+                    if len(available) < count:
+                        _used_ids.clear()
+                        available = total
+                    results = available[:]
 
-            # 标记已用
-            for r in results:
-                _used_ids.add(r.get('platform_id', ''))
-
-            # 去重 + 难度筛选（AT 不筛难度）
+            # 去重（洛谷可能有重复）+ 难度筛选
             seen = set()
             unique = []
             for r in results:
@@ -464,8 +465,12 @@ class PlanModule:
                     continue
                 seen.add(rid)
                 unique.append(r)
-            # 精确取 count 个，不足时返回全部可用
             results = unique[:count]
+
+            # 只标记最终选中的题目为已用（P1：避免过度标记）
+            with _pool_lock:
+                for r in results:
+                    _used_ids.add(r.get('platform_id', ''))
 
             self.parent.after(0, lambda: self._on_gen_results(results))
 
@@ -486,7 +491,7 @@ class PlanModule:
                 tk.Label(rf, text=f'{p.get("platform_id","")[:12]}',
                          font=(self.config.get('font_family'), 9),
                          bg=colors['bg_main'], fg=colors['fg_muted']).pack(side=tk.LEFT, padx=(0, 8))
-                tk.Label(rf, text=p['title'][:30],
+                tk.Label(rf, text=p.get('title', '未知题目')[:30],
                          font=(self.config.get('font_family'), 10),
                          bg=colors['bg_main'], fg=colors['fg_primary'], anchor=tk.W
                          ).pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -692,7 +697,6 @@ class PlanModule:
                 if pid:
                     url = _build_problem_url(plat, pid)
                     if url:
-                        import webbrowser
                         title_lbl.bind('<Button-1>', lambda e, u=url: webbrowser.open(u))
                         title_lbl.bind('<Enter>', lambda e, l=title_lbl: l.configure(fg=colors['fg_link']))
                         title_lbl.bind('<Leave>', lambda e, l=title_lbl: l.configure(fg=colors['fg_primary']))
@@ -930,7 +934,6 @@ class PlanModule:
             return
 
         # 提取 training ID
-        import re
         m = re.search(r'training/(\d+)', url)
         if not m:
             # 尝试纯数字
@@ -1143,7 +1146,6 @@ class PlanModule:
             if pid:
                 url = _build_problem_url(plat, pid)
                 if url:
-                    import webbrowser
                     title_lbl.bind('<Button-1>', lambda e, u=url: webbrowser.open(u))
                     title_lbl.bind('<Enter>', lambda e, l=title_lbl: l.configure(fg=colors['fg_link']))
                     title_lbl.bind('<Leave>', lambda e, l=title_lbl: l.configure(fg=colors['fg_primary']))
@@ -1216,21 +1218,20 @@ class PlanModule:
         try:
             conn = get_connection()
             row = conn.execute("SELECT * FROM practice_state ORDER BY id DESC LIMIT 1").fetchone()
-            conn.close()
             if not row:
+                conn.close()
                 return
-            # 检查对应练习计划是否还存在
-            conn2 = get_connection()
-            plan = conn2.execute("SELECT * FROM practice_plans WHERE id=?", (row['plan_id'],)).fetchone()
+            # 检查对应练习计划是否还存在（使用同一个连接）
+            plan = conn.execute("SELECT * FROM practice_plans WHERE id=?", (row['plan_id'],)).fetchone()
             if not plan:
-                conn2.close()
+                conn.close()
                 self._clear_practice_state()
                 return
             plan = dict(plan)
-            items = conn2.execute(
+            items = conn.execute(
                 "SELECT * FROM plan_problems WHERE plan_id=? ORDER BY sort_order, id",
                 (row['plan_id'],)).fetchall()
-            conn2.close()
+            conn.close()
             if not items:
                 self._clear_practice_state()
                 return
@@ -1265,8 +1266,9 @@ class PlanModule:
             conn.commit()
             conn.close()
             self._load_view()
-        except Exception:
-            pass
+            self.app.set_status('题目已从练习中移除')
+        except Exception as e:
+            self.app.set_status(f'移除失败: {e}')
 
     def _delete_practice(self):
         if not self._current_id:

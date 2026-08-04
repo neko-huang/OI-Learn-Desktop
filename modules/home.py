@@ -138,7 +138,7 @@ class HomeModule:
         if last:
             try:
                 last_d = date.fromisoformat(last)
-                if (date.today() - last_d).days == 1:
+                if last_d + timedelta(days=1) == date.today():
                     streak += 1
                 else:
                     streak = 1
@@ -191,15 +191,18 @@ class HomeModule:
                 # 高亮连续签到区间内的所有日期
                 try:
                     last_d = date.fromisoformat(last_date)
+                except:
+                    last_d = None
+                if last_d:
                     streak = self.config.get('checkin_streak', 0)
                     if streak > 0:
                         start_d = last_d - timedelta(days=streak - 1)
                         if start_d <= dt <= last_d:
                             bg = '#AFA9EC'
                             fg = '#ffffff'
-                except:
-                    pass
-            elif d > today.day:
+
+            # 未来日期变灰（独立于 last_date，有签到记录后也能正常变灰）
+            if d > today.day:
                 bg = colors['bg_sidebar']
                 fg = colors['fg_muted']
 
@@ -398,7 +401,6 @@ class HomeModule:
             name_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
             url = c.get('url', '')
             if url:
-                import webbrowser
                 name_lbl.bind('<Button-1>', lambda e, u=url: webbrowser.open(u))
                 name_lbl.bind('<Enter>', lambda e, lb=name_lbl: lb.configure(fg=colors['fg_link']))
                 name_lbl.bind('<Leave>', lambda e, lb=name_lbl: lb.configure(fg=colors['fg_primary']))
@@ -515,7 +517,9 @@ class HomeModule:
         self.config.set_debounced('home_note', content, delay_ms=800)
 
     def on_before_leave(self):
-        self._save_note()
+        """离开时同步写入便签，确保不丢失"""
+        content = self.note_text.get('1.0', tk.END).strip()
+        self.config.set('home_note', content)
 
     def _refresh_contests(self):
         """强制刷新赛事数据（后台线程，不卡UI）"""

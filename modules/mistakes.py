@@ -33,6 +33,7 @@ class MistakesModule:
         self._current_id = None
         self._mode = 'view'
         self._dirty = False
+        self._search_after_id = None
         self.e_selected_tags = []  # 当前已选标签列表
         self._view_tags = []       # 查看模式下的标签（只读）
 
@@ -54,7 +55,12 @@ class MistakesModule:
         tk.Label(top, text='搜索:', font=(self.config.get('font_family'), 10),
                  bg=colors['bg_sidebar'], fg=colors['fg_secondary']).pack(side=tk.LEFT, padx=(12, 4))
         self.search_var = tk.StringVar()
-        self.search_var.trace_add('write', lambda *a: self._refresh_list())
+        self._search_after_id = None
+        def _debounced_refresh(*args):
+            if self._search_after_id:
+                self.parent.after_cancel(self._search_after_id)
+            self._search_after_id = self.parent.after(250, self._refresh_list)
+        self.search_var.trace_add('write', _debounced_refresh)
         tk.Entry(top, textvariable=self.search_var, font=(self.config.get('font_family'), 10),
                  bg=colors['bg_input'], fg=colors['fg_primary'],
                  relief=tk.FLAT, width=20).pack(side=tk.LEFT)
@@ -371,16 +377,22 @@ class MistakesModule:
         search = self.search_var.get().lower().strip()
         try:
             conn = get_connection()
-            rows = conn.execute("SELECT id, title, created_at FROM mistakes ORDER BY updated_at DESC").fetchall()
+            if search:
+                rows = conn.execute(
+                    "SELECT id, title, created_at FROM mistakes WHERE LOWER(title) LIKE ? ORDER BY updated_at DESC",
+                    (f'%{search}%',)
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT id, title, created_at FROM mistakes ORDER BY updated_at DESC").fetchall()
             conn.close()
         except Exception:
             rows = []
 
         for row in rows:
             title = row['title'] or '(未命名)'
-            if search and search not in title.lower():
-                continue
-            self.mistakes_listbox.insert(tk.END, title)
+            date = (row['created_at'] or '')[:10]
+            display = f'{title}  [{date}]' if date else title
+            self.mistakes_listbox.insert(tk.END, display)
             self._list_ids.append(row['id'])
 
     def _on_select(self, event):
@@ -396,6 +408,14 @@ class MistakesModule:
         self._load_view()
 
     def _load_view(self):
+        # 先重置 UI 状态，避免显示过期数据
+        self.view_title.config(text='')
+        self._view_tags = []
+        self._render_view_tags()
+        if hasattr(self, '_compare_frame'):
+            self._compare_frame.destroy()
+            del self._compare_frame
+
         if not self._current_id:
             return
         try:
@@ -423,13 +443,14 @@ class MistakesModule:
             
             # 创建并列对比面板
             self._compare_frame = tk.Frame(self.view_frame, bg=colors['bg_main'])
-            # 插入到 markdown view 之前
+            # 先 pack view_md，再 pack 对比面板在其上方
+            self.view_md.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 4))
             self._compare_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 4),
                                       before=self.view_md)
             
             # 错误原因
             reason = row.get('reason', '') or '*暂无*'
-            if reason and row.get('wrong_code'):
+            if reason:
                 reason_frame = tk.Frame(self._compare_frame, bg=colors['bg_sidebar'],
                                          highlightbackground=colors['border_card'],
                                          highlightthickness=1)
@@ -551,6 +572,9 @@ class MistakesModule:
         reason = self.e_reason.get('1.0', tk.END).strip()
         tags = json.dumps(self.e_selected_tags, ensure_ascii=False)
 
+        was_new = self._current_id is None
+        old_id = self._current_id
+
         try:
             conn = get_connection()
             if self._current_id:
@@ -572,6 +596,16 @@ class MistakesModule:
 
         self._dirty = False
         self._refresh_list()
+        # 新建条目后刷新列表并选中
+        if was_new and self._current_id:
+            try:
+                idx = self._list_ids.index(self._current_id)
+                self.mistakes_listbox.selection_clear(0, tk.END)
+                self.mistakes_listbox.selection_set(idx)
+                self.mistakes_listbox.activate(idx)
+                self.mistakes_listbox.see(idx)
+            except ValueError:
+                pass
         self.app.set_status(f'已自动保存「{title or "..."}」')
 
     def _delete_current(self):

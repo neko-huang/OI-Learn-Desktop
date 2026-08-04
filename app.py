@@ -52,6 +52,9 @@ class App(tk.Tk):
 
         self.protocol('WM_DELETE_WINDOW', self._on_close)
         self.current_module = None
+        self._active_module = None
+        self._shutting_down = False
+        self._status_after_id = None
 
         # 已加载的模块实例（懒加载）
         self._loaded_modules = {}
@@ -93,9 +96,11 @@ class App(tk.Tk):
                 initialize_database()
                 migrate()
                 seed_msg = seed_database()
-                self.after(0, lambda: self._on_db_ready(seed_msg))
+                if not getattr(self, '_shutting_down', False):
+                    self.after(0, lambda: self._on_db_ready(seed_msg))
             except Exception as e:
-                self.after(0, lambda: self.set_status(f'数据库初始化异常: {e}'))
+                if not getattr(self, '_shutting_down', False):
+                    self.after(0, lambda: self.set_status(f'数据库初始化异常: {e}'))
 
         threading.Thread(target=_init_db, daemon=True).start()
 
@@ -174,7 +179,6 @@ class App(tk.Tk):
             # 否则第二个会覆盖第一个，导致 switch_module 不触发
             mid = mod['id']
             btn.bind('<Button-1>', lambda e, m=mid: self.switch_module(m))
-            btn.bind('<ButtonRelease-1>', lambda e, b=btn: b.configure(fg=self.config.get_colors()['fg_accent']))
             btn.bind('<Enter>', lambda e, b=btn, m=mid: self._nav_hover_enter(m, b))
             btn.bind('<Leave>', lambda e, b=btn, m=mid: self._nav_hover_leave(m, b))
             # 指示条也响应点击，消除底部 3px 盲区
@@ -370,8 +374,10 @@ class App(tk.Tk):
         self.nav_frame.configure(bg=colors['bg_nav'])
         self.nav_sep.configure(bg=colors['border'])
         for w in self.nav_frame.winfo_children():
-            try: w.configure(bg=colors['bg_nav'])
-            except: pass
+            try:
+                w.configure(bg=colors['bg_nav'])
+            except tk.TclError:
+                pass
         # 更新导航按钮容器、按钮标签和指示条
         for mid, btn in self.nav_buttons.items():
             container = self._nav_containers.get(mid)
@@ -463,7 +469,9 @@ class App(tk.Tk):
 
     def set_status(self, text: str):
         self.status_label.config(text=text)
-        self.after(5000, lambda: self._restore_status(text))
+        if self._status_after_id is not None:
+            self.after_cancel(self._status_after_id)
+        self._status_after_id = self.after(5000, lambda: self._restore_status(text))
 
     def _restore_status(self, expected_text: str):
         current = self.status_label.cget('text')
@@ -471,14 +479,15 @@ class App(tk.Tk):
             self.status_label.config(text='')
 
     def _on_close(self):
+        self._shutting_down = True
         # 通知当前模块（自动保存等）
         for module in self._loaded_modules.values():
             if hasattr(module, 'on_before_leave'):
                 module.on_before_leave()
-        self.config.set('window_width', self.winfo_width())
-        self.config.set('window_height', self.winfo_height())
-        self.config.set('window_x', self.winfo_x())
-        self.config.set('window_y', self.winfo_y())
+        self.config._settings['window_width'] = self.winfo_width()
+        self.config._settings['window_height'] = self.winfo_height()
+        self.config._settings['window_x'] = self.winfo_x()
+        self.config._settings['window_y'] = self.winfo_y()
         self.config.save()
         self.destroy()
 

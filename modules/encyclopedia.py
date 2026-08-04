@@ -31,6 +31,7 @@ class EncyclopediaModule:
             w.destroy()
 
         self._editing_id = None   # 当前编辑中的条目 ID
+        self._entry_ids = []     # 当前列表中的条目 ID 索引
         self._load_entries()
         self._build_ui()
         self._refresh_list()
@@ -44,12 +45,14 @@ class EncyclopediaModule:
         self.entries = []
         try:
             conn = get_connection()
-            rows = conn.execute(
-                """SELECT id, title, category, tags, created_at, updated_at
-                   FROM encyclopedia ORDER BY updated_at DESC"""
-            ).fetchall()
-            self.entries = [dict(r) for r in rows]
-            conn.close()
+            try:
+                rows = conn.execute(
+                    """SELECT id, title, category, tags, created_at, updated_at
+                       FROM encyclopedia ORDER BY updated_at DESC"""
+                ).fetchall()
+                self.entries = [dict(r) for r in rows]
+            finally:
+                conn.close()
         except Exception:
             self.entries = []
 
@@ -57,11 +60,13 @@ class EncyclopediaModule:
         """加载单条百科的完整内容"""
         try:
             conn = get_connection()
-            row = conn.execute(
-                "SELECT * FROM encyclopedia WHERE id=?", (entry_id,)
-            ).fetchone()
-            conn.close()
-            return dict(row) if row else None
+            try:
+                row = conn.execute(
+                    "SELECT * FROM encyclopedia WHERE id=?", (entry_id,)
+                ).fetchone()
+                return dict(row) if row else None
+            finally:
+                conn.close()
         except Exception:
             return None
 
@@ -69,20 +74,23 @@ class EncyclopediaModule:
         """保存或更新百科条目"""
         try:
             conn = get_connection()
-            if self._editing_id:
-                conn.execute(
-                    """UPDATE encyclopedia SET title=?, category=?, content=?, tags=?,
-                       updated_at=datetime('now','localtime') WHERE id=?""",
-                    (title, category, content, tags, self._editing_id)
-                )
-            else:
-                conn.execute(
-                    """INSERT INTO encyclopedia (title, category, content, tags)
-                       VALUES (?, ?, ?, ?)""",
-                    (title, category, content, tags)
-                )
-            conn.commit()
-            conn.close()
+            try:
+                if self._editing_id:
+                    conn.execute(
+                        """UPDATE encyclopedia SET title=?, category=?, content=?, tags=?,
+                           updated_at=datetime('now','localtime') WHERE id=?""",
+                        (title, category, content, tags, self._editing_id)
+                    )
+                else:
+                    cursor = conn.execute(
+                        """INSERT INTO encyclopedia (title, category, content, tags)
+                           VALUES (?, ?, ?, ?)""",
+                        (title, category, content, tags)
+                    )
+                    self._editing_id = cursor.lastrowid
+                conn.commit()
+            finally:
+                conn.close()
             self._load_entries()
             self._refresh_list()
             return True
@@ -96,9 +104,11 @@ class EncyclopediaModule:
             return
         try:
             conn = get_connection()
-            conn.execute("DELETE FROM encyclopedia WHERE id=?", (entry_id,))
-            conn.commit()
-            conn.close()
+            try:
+                conn.execute("DELETE FROM encyclopedia WHERE id=?", (entry_id,))
+                conn.commit()
+            finally:
+                conn.close()
             self._load_entries()
             self._refresh_list()
             self._show_empty()
@@ -342,6 +352,10 @@ class EncyclopediaModule:
         entry_id = self._entry_ids[idx]
         entry = self._load_entry(entry_id)
         if not entry:
+            self.app.set_status('该条目已被删除，刷新列表')
+            self._load_entries()
+            self._refresh_list()
+            self._show_empty()
             return
 
         self._editing_id = entry_id
@@ -419,6 +433,8 @@ class EncyclopediaModule:
             entry = self._load_entry(self._editing_id)
             if entry:
                 self.markdown_view.render(entry.get('content', ''))
+            else:
+                self._show_empty()
         else:
             self._show_empty()
 
@@ -429,6 +445,9 @@ class EncyclopediaModule:
             messagebox.showwarning('提示', '请输入标题')
             return
         category = self.edit_cat_var.get()
+        if not category:
+            messagebox.showwarning('提示', '请选择分类')
+            return
         tags = self.edit_tags_var.get().strip()
         content = self.edit_text.get('1.0', tk.END).strip()
 

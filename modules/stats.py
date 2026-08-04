@@ -39,8 +39,8 @@ class StatsModule:
         canvas.configure(yscrollcommand=scroll.set)
 
         self.inner = tk.Frame(canvas, bg=colors['bg_main'])
-        canvas.create_window((0, 0), window=self.inner, anchor=tk.NW)
-        canvas.bind('<Configure>', lambda e: canvas.itemconfig(canvas.find_all()[0], width=e.width))
+        self._canvas_win = canvas.create_window((0, 0), window=self.inner, anchor=tk.NW)
+        canvas.bind('<Configure>', lambda e: canvas.itemconfig(self._canvas_win, width=e.width))
         self.inner.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
 
         # 标题
@@ -84,29 +84,29 @@ class StatsModule:
     def _refresh_cards(self):
         try:
             conn = get_connection()
+            try:
+                # 大纲进度
+                all_topics = get_all_topic_ids()
+                total = len(all_topics)
+                rows = conn.execute("SELECT COUNT(*) as c FROM outline_progress WHERE mastery != 'none'").fetchone()
+                mastered = rows['c'] if rows else 0
+                self.card1.config(text=f'{mastered}/{total}')
 
-            # 大纲进度
-            all_topics = get_all_topic_ids()
-            total = len(all_topics)
-            rows = conn.execute("SELECT COUNT(*) as c FROM outline_progress WHERE mastery != 'none'").fetchone()
-            mastered = rows['c'] if rows else 0
-            self.card1.config(text=f'{mastered}/{total}')
+                # 刷题总数
+                rows = conn.execute("SELECT COUNT(*) as c FROM problems").fetchone()
+                self.card2.config(text=str(rows['c'] if rows else 0))
 
-            # 刷题总数
-            rows = conn.execute("SELECT COUNT(*) as c FROM problems").fetchone()
-            self.card2.config(text=str(rows['c'] if rows else 0))
+                # 已掌握
+                rows = conn.execute("SELECT COUNT(*) as c FROM outline_progress WHERE mastery = 'mastered'").fetchone()
+                self.card3.config(text=str(rows['c'] if rows else 0))
 
-            # 已掌握
-            rows = conn.execute("SELECT COUNT(*) as c FROM outline_progress WHERE mastery = 'mastered'").fetchone()
-            self.card3.config(text=str(rows['c'] if rows else 0))
-
-            # 易错记录
-            rows = conn.execute("SELECT COUNT(*) as c FROM mistakes").fetchone()
-            self.card4.config(text=str(rows['c'] if rows else 0))
-
-            conn.close()
-        except Exception:
-            pass
+                # 易错记录
+                rows = conn.execute("SELECT COUNT(*) as c FROM mistakes").fetchone()
+                self.card4.config(text=str(rows['c'] if rows else 0))
+            finally:
+                conn.close()
+        except Exception as e:
+            self.app.set_status(f'数据加载失败: {e}')
 
     # ============================================================
     # 图表绘制
@@ -139,10 +139,13 @@ class StatsModule:
         cats = get_categories()
         try:
             conn = get_connection()
-            rows = conn.execute("SELECT topic_id, mastery FROM outline_progress WHERE mastery != 'none'").fetchall()
-            progress = {r['topic_id']: r['mastery'] for r in rows}
-            conn.close()
-        except Exception:
+            try:
+                rows = conn.execute("SELECT topic_id, mastery FROM outline_progress WHERE mastery != 'none'").fetchall()
+                progress = {r['topic_id']: r['mastery'] for r in rows}
+            finally:
+                conn.close()
+        except Exception as e:
+            self.app.set_status(f'大纲数据加载失败: {e}')
             progress = {}
 
         all_topics = get_all_topic_ids()
@@ -163,11 +166,16 @@ class StatsModule:
 
         canvas_w = 500
         bar_h = 24
-        max_total = max(v['total'] for _, v in sorted_cats) if sorted_cats else 1
 
         canvas = tk.Canvas(parent, bg=colors['bg_main'], height=len(sorted_cats) * (bar_h + 8) + 20,
                            highlightthickness=0)
         canvas.pack(fill=tk.BOTH, expand=True)
+
+        if not sorted_cats:
+            canvas.create_text(canvas_w / 2, 20, text='暂无数据',
+                               font=(self.config.get('font_family'), 10),
+                               fill=colors['fg_muted'])
+            return
 
         for i, (name, data) in enumerate(sorted_cats):
             y = i * (bar_h + 8) + 5
@@ -204,14 +212,17 @@ class StatsModule:
 
         try:
             conn = get_connection()
-            diff_rows = conn.execute(
-                "SELECT difficulty, COUNT(*) as c FROM problems WHERE difficulty != '' GROUP BY difficulty ORDER BY c DESC"
-            ).fetchall()
-            status_rows = conn.execute(
-                "SELECT status, COUNT(*) as c FROM problems GROUP BY status"
-            ).fetchall()
-            conn.close()
-        except Exception:
+            try:
+                diff_rows = conn.execute(
+                    "SELECT difficulty, COUNT(*) as c FROM problems WHERE difficulty != '' GROUP BY difficulty ORDER BY c DESC"
+                ).fetchall()
+                status_rows = conn.execute(
+                    "SELECT status, COUNT(*) as c FROM problems GROUP BY status"
+                ).fetchall()
+            finally:
+                conn.close()
+        except Exception as e:
+            self.app.set_status(f'刷题数据加载失败: {e}')
             diff_rows = []
             status_rows = []
 
@@ -228,9 +239,12 @@ class StatsModule:
                            highlightthickness=0)
         canvas.pack(fill=tk.BOTH, expand=True)
 
+        if not diff_rows:
+            canvas.create_text(150, 20, text='暂无数据',
+                               font=(self.config.get('font_family'), 10),
+                               fill=colors['fg_muted'])
+
         for i, row in enumerate(diff_rows[:8]):
-            if i >= 8:
-                break
             y = i * 28 + 5
             pct = row['c'] / total_problems * 100
             bar_w = int(300 * pct / 100)

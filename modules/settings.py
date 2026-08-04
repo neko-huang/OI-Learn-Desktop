@@ -69,14 +69,18 @@ class SettingsDialog:
                   bg=colors['fg_accent'], fg='#ffffff', relief=tk.FLAT,
                   padx=20, pady=6, command=self._save).pack(side=tk.RIGHT)
 
+        # Escape 关闭
+        self.dialog.bind('<Escape>', lambda e: self.dialog.destroy())
+
     def _save(self):
         new_theme = self.theme_var.get()
         old_theme = self.config.get_theme_mode()
 
-        self.config.set_theme_mode(new_theme)
-        self.config.set('luogu_cookie', self.cookie_text.get('1.0', tk.END).strip())
-
-        self.dialog.destroy()
+        try:
+            self.config.set_theme_mode(new_theme)
+            self.config.set('luogu_cookie', self.cookie_text.get('1.0', tk.END).strip())
+        finally:
+            self.dialog.destroy()
 
         if new_theme != old_theme:
             self.app.apply_theme()

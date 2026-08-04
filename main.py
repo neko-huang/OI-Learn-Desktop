@@ -1,5 +1,5 @@
 """
-InfoLearn Desktop — ���息学竞赛学习桌面助手
+InfoLearn Desktop — 信息学竞赛学习桌面助手
 入口文件
 
 运行方式：
@@ -11,6 +11,7 @@ InfoLearn Desktop — ���息学竞赛学习桌面助手
 
 import sys
 import os
+import traceback
 
 # 确保程序根目录在 Python 搜索路径中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -25,4 +26,18 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        # 顶层异常兜底：显示友好错误对话框，避免暴露 Python 堆栈
+        try:
+            import tkinter.messagebox as mb
+            mb.showerror(
+                'InfoLearn 错误',
+                f'程序启动或运行过程中发生未预期错误：\n\n{e}\n\n'
+                '请查看控制台日志获取详细信息，或联系开发者。'
+            )
+        except Exception:
+            pass
+        traceback.print_exc()
+        sys.exit(1)

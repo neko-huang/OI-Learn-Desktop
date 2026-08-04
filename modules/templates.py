@@ -30,7 +30,6 @@ class TemplatesModule:
         self._refresh_list()
 
     def _load_templates(self):
-        self.templates = []
         try:
             conn = get_connection()
             rows = conn.execute(
@@ -38,8 +37,9 @@ class TemplatesModule:
             ).fetchall()
             self.templates = [dict(r) for r in rows]
             conn.close()
-        except Exception:
-            self.templates = []
+        except Exception as e:
+            self.app.set_status(f'加载模板失败: {e}')
+            # 保留旧数据
 
     def _build_ui(self):
         colors = self.config.get_colors()
@@ -78,7 +78,7 @@ class TemplatesModule:
 
         self.lang_var = tk.StringVar(value='全部')
         ttk.Combobox(left, textvariable=self.lang_var,
-                      values=['全部', 'C++', 'Python', 'Java'],
+                      values=['全部', 'cpp', 'python', 'java'],
                       state='readonly', width=18).pack(fill=tk.X, padx=8, pady=(0, 6))
         self.lang_var.trace_add('write', lambda *a: self._refresh_list())
 
@@ -164,6 +164,10 @@ class TemplatesModule:
                                bg=colors['bg_input'], fg=colors['fg_primary'],
                                relief=tk.FLAT, wrap=tk.NONE, undo=True)
         self.e_code.pack(fill=tk.BOTH, expand=True, padx=pad_x, pady=(2, 2))
+        # 水平滚动条
+        code_xsb = ttk.Scrollbar(self.edit_frame, orient=tk.HORIZONTAL, command=self.e_code.xview)
+        code_xsb.pack(fill=tk.X, padx=pad_x)
+        self.e_code.configure(xscrollcommand=code_xsb.set)
 
         ebar = tk.Frame(self.edit_frame, bg=colors['bg_sidebar'], height=40)
         ebar.pack(fill=tk.X, side=tk.BOTTOM)
@@ -171,6 +175,13 @@ class TemplatesModule:
         tk.Button(ebar, text='返回查看', font=(self.config.get('font_family'), 10),
                   bg=colors['bg_sidebar'], fg=colors['fg_primary'], relief=tk.FLAT,
                   padx=16, pady=4, command=self._exit_edit).pack(side=tk.RIGHT, padx=8)
+
+        # 编辑字段变化时标记 dirty
+        self.e_name.bind('<KeyRelease>', lambda e: self._mark_dirty())
+        self.e_note.bind('<KeyRelease>', lambda e: self._mark_dirty())
+        self.e_code.bind('<KeyRelease>', lambda e: self._mark_dirty())
+        self.e_cat.bind('<<ComboboxSelected>>', lambda e: self._mark_dirty())
+        self.e_lang.bind('<<ComboboxSelected>>', lambda e: self._mark_dirty())
 
     def _build_empty(self):
         colors = self.config.get_colors()
@@ -186,12 +197,14 @@ class TemplatesModule:
             getattr(self, f'{n}_frame').pack_forget()
         getattr(self, f'{name}_frame').pack(fill=tk.BOTH, expand=True)
 
+    def _mark_dirty(self, event=None):
+        self._dirty = True
+
     def _refresh_list(self):
         search = self.search_var.get().lower().strip()
         cat = self.cat_var.get()
         lang = self.lang_var.get()
-        lang_map = {'C++': 'cpp', 'Python': 'python', 'Java': 'java'}
-        lang_filter = lang_map.get(lang)
+        lang_filter = lang if lang != '全部' else None
 
         self.listbox.delete(0, tk.END)
         self._list_ids = []
@@ -272,8 +285,10 @@ class TemplatesModule:
         if self._mode != 'edit' or not self._dirty:
             return
         name = self.e_name.get().strip()
-        if not name and not self._current_id:
-            return
+        if not name:
+            name = '未命名模板'
+            self.e_name.delete(0, tk.END)
+            self.e_name.insert(0, name)
         cat = self.e_cat.get()
         lang = self.e_lang.get()
         note = self.e_note.get('1.0', tk.END).strip()
@@ -310,8 +325,8 @@ class TemplatesModule:
             self._load_templates()
             self._refresh_list()
             self._load_view()
-        except Exception:
-            pass
+        except Exception as e:
+            self.app.set_status(f'操作失败: {e}')
 
     def _delete_current(self):
         if not self._current_id:
@@ -327,8 +342,8 @@ class TemplatesModule:
             self._load_templates()
             self._refresh_list()
             self._show_frame('empty')
-        except Exception:
-            pass
+        except Exception as e:
+            self.app.set_status(f'操作失败: {e}')
 
     def on_before_leave(self):
         self._auto_save()

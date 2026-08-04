@@ -34,6 +34,7 @@ class ProblemsModule:
         self._left_visible = True
 
         self._all_tags = get_all_subtopic_tags()
+        self._tag_picker_refresh = None
 
         self._build_ui()
         self._refresh_list()
@@ -62,7 +63,14 @@ class ProblemsModule:
         tk.Label(top, text='搜索:', font=(self.config.get('font_family'), 10),
                  bg=colors['bg_sidebar'], fg=colors['fg_secondary']).pack(side=tk.LEFT, padx=(4, 4))
         self.search_var = tk.StringVar()
-        self.search_var.trace_add('write', lambda *a: self._refresh_list())
+        self._search_debounce_id = None
+        self.search_var.trace_add('write', lambda *a: self._on_search_debounced())
+
+    def _on_search_debounced(self):
+        """搜索框防抖：300ms 后刷新"""
+        if self._search_debounce_id:
+            self.parent.after_cancel(self._search_debounce_id)
+        self._search_debounce_id = self.parent.after(300, self._refresh_list)
         self.search_entry = tk.Entry(top, textvariable=self.search_var, font=(self.config.get('font_family'), 10),
                  bg=colors['bg_input'], fg=colors['fg_primary'],
                  relief=tk.FLAT, width=20)
@@ -146,7 +154,8 @@ class ProblemsModule:
                 "SELECT id, title, platform, platform_id, difficulty, status FROM problems ORDER BY updated_at DESC"
             ).fetchall()
             conn.close()
-        except Exception:
+        except Exception as e:
+            self.app.set_status(f'加载题目列表失败: {e}')
             rows = []
 
         colors = self.config.get_colors()
@@ -220,10 +229,10 @@ class ProblemsModule:
         self.edit_canvas = tk.Canvas(self.edit_frame, bg=colors['bg_main'], highlightthickness=0)
         self.edit_scroll = ttk.Scrollbar(self.edit_frame, orient=tk.VERTICAL, command=self.edit_canvas.yview)
         self.edit_inner = tk.Frame(self.edit_canvas, bg=colors['bg_main'])
-        self.edit_canvas.create_window((0, 0), window=self.edit_inner, anchor=tk.NW)
+        self._edit_win = self.edit_canvas.create_window((0, 0), window=self.edit_inner, anchor=tk.NW)
         self.edit_canvas.configure(yscrollcommand=self.edit_scroll.set)
         self.edit_inner.bind('<Configure>', lambda e: self.edit_canvas.configure(scrollregion=self.edit_canvas.bbox('all')))
-        self.edit_canvas.bind('<Configure>', lambda e: self.edit_canvas.itemconfig(self.edit_canvas.find_all()[0], width=e.width))
+        self.edit_canvas.bind('<Configure>', lambda e: self.edit_canvas.itemconfig(self._edit_win, width=e.width))
         self._build_edit_mode()
         self.empty_frame = tk.Frame(self.right_wrapper, bg=colors['bg_main'])
         tk.Label(self.empty_frame, text='选择一个题目查看\n或点击「+ 新建题目」录入',
@@ -414,7 +423,7 @@ class ProblemsModule:
         tk.Label(right2, text='状态', font=(self.config.get('font_family'), 11),
                  bg=colors['bg_main'], fg=colors['fg_primary']).pack(anchor=tk.W)
         self.e_status = ttk.Combobox(right2,
-                                      values=['进行中', '待做', '已做', '复习'],
+                                      values=['待做', '已做', '复习'],
                                       state='readonly')
         self.e_status.set('待做')
         self.e_status.pack(fill=tk.X, pady=(2, 0), ipady=2)
@@ -431,7 +440,7 @@ class ProblemsModule:
                  bg=colors['bg_main'], fg=colors['fg_primary']).pack(anchor=tk.W)
         self.e_platform = tk.StringVar(value='洛谷')
         self.e_platform_combo = ttk.Combobox(plat_frame, textvariable=self.e_platform,
-                                              values=['洛谷', 'Codeforces', 'AtCoder', 'Other'],
+                                              values=PLATFORMS,
                                               state='readonly', width=12)
         self.e_platform_combo.pack(pady=(2, 0), ipady=2)
         self.e_platform_combo.bind('<<ComboboxSelected>>', lambda e: self._mark_dirty())
@@ -671,10 +680,13 @@ class ProblemsModule:
 
         def _on_close():
             dialog.destroy()
+            self._tag_picker_refresh = None
             self._render_tag_chips()
 
         def _on_ok():
-            _on_close()
+            dialog.destroy()
+            self._tag_picker_refresh = None
+            self._render_tag_chips()
 
         # 按钮
         btn_fr = tk.Frame(dialog, bg=colors['bg_main'])
@@ -693,8 +705,8 @@ class ProblemsModule:
             self.e_selected_tags.append(tag_name)
         self._mark_dirty()
         self._render_tag_chips()
-        # 刷新标签选择对话框中的按钮颜色
-        if hasattr(self, '_tag_picker_refresh'):
+        # 刷新标签选择对话框中的按钮颜色（仅当对话框未关闭时）
+        if self._tag_picker_refresh is not None:
             self._tag_picker_refresh()
 
     # ============================================================
@@ -727,7 +739,7 @@ class ProblemsModule:
         self.e_title.insert(0, row.get('title', ''))
         try:
             platform = row.get('platform', '洛谷')
-            self.e_platform.set(platform if platform in ['洛谷', 'Codeforces', 'AtCoder', 'Other'] else 'Other')
+            self.e_platform.set(platform if platform in PLATFORMS else '其他')
         except Exception:
             pass
         self.e_url.delete(0, tk.END)

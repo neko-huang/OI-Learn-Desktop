@@ -3,10 +3,13 @@
 负责：主题切换（亮色/暗色/跟随系统）、配置文件持久化、颜色方案定义
 """
 
+import base64
 import json
 import os
 import sys
 import platform
+import threading
+import time
 
 # ============================================================
 # 路径工具 —— 所有路径都相对于程序所在目录
@@ -118,6 +121,12 @@ DARK_THEME = {
 }
 
 
+# 系统主题检测缓存
+_system_theme_cache = None
+_system_theme_checked = 0.0
+_SYSTEM_THEME_TTL = 60  # 缓存有效期（秒）
+
+
 def detect_system_theme() -> str:
     """
     检测操作系统当前使用的主题模式
@@ -126,7 +135,13 @@ def detect_system_theme() -> str:
     Linux: 读取 gsettings（部分支持）
     返回 'light' 或 'dark'
     """
+    global _system_theme_cache, _system_theme_checked
+    now = time.time()
+    if _system_theme_cache is not None and (now - _system_theme_checked) < _SYSTEM_THEME_TTL:
+        return _system_theme_cache
+
     system = platform.system()
+    result = 'light'
     try:
         if system == 'Windows':
             import winreg
@@ -136,23 +151,26 @@ def detect_system_theme() -> str:
             )
             apps_use_light, _ = winreg.QueryValueEx(key, 'AppsUseLightTheme')
             winreg.CloseKey(key)
-            return 'light' if apps_use_light == 1 else 'dark'
+            result = 'light' if apps_use_light == 1 else 'dark'
 
         elif system == 'Darwin':  # macOS
             import subprocess
-            result = subprocess.run(
+            proc_result = subprocess.run(
                 ['defaults', 'read', '-g', 'AppleInterfaceStyle'],
                 capture_output=True, text=True
             )
-            if 'Dark' in result.stdout:
-                return 'dark'
-            return 'light'
+            if 'Dark' in proc_result.stdout:
+                result = 'dark'
 
         else:  # Linux / 其他
-            return 'light'
+            result = 'light'
     except Exception:
         # 如果检测失败，默认返回亮色
-        return 'light'
+        result = 'light'
+
+    _system_theme_cache = result
+    _system_theme_checked = now
+    return result
 
 
 # ============================================================
@@ -193,6 +211,8 @@ class Config:
             'study_plan': '[]',
         }
 
+        self._debounce_timers = {}
+        self._lock = threading.Lock()
         self._load()
 
     # ---------- 持久化 ----------
@@ -203,12 +223,17 @@ class Config:
             try:
                 with open(path, 'r', encoding='utf-8') as f:
                     saved = json.load(f)
-                # 合并所有保存的键到 _settings
+                # 合并所有保存的键到 _settings（已保存的键覆盖默认值，默认键保留)
                 self._settings.update(saved)
-                # 确保默认键存在
-                for key in list(self._settings.keys()):
-                    if key not in saved and key not in self._settings:
-                        pass  # 保持默认值
+                # 解码已加密存储的 luogu_cookie
+                if 'luogu_cookie' in self._settings and self._settings['luogu_cookie']:
+                    try:
+                        self._settings['luogu_cookie'] = base64.b64decode(
+                            self._settings['luogu_cookie'].encode()
+                        ).decode()
+                    except Exception:
+                        # 非 base64 编码视为明文，保持原样
+                        pass
             except (json.JSONDecodeError, IOError):
                 pass
 
@@ -216,9 +241,15 @@ class Config:
         """保存配置到文件"""
         path = get_settings_path()
         try:
+            # 对 luogu_cookie 进行 base64 混淆后存储
+            settings_to_save = dict(self._settings)
+            if settings_to_save.get('luogu_cookie'):
+                settings_to_save['luogu_cookie'] = base64.b64encode(
+                    settings_to_save['luogu_cookie'].encode()
+                ).decode()
             with open(path, 'w', encoding='utf-8') as f:
-                json.dump(self._settings, f, ensure_ascii=False, indent=2)
-        except IOError as e:
+                json.dump(settings_to_save, f, ensure_ascii=False, indent=2)
+        except (IOError, TypeError) as e:
             print(f"[配置] 保存失败: {e}")
 
     # ---------- 主题相关 ----------
@@ -240,31 +271,32 @@ class Config:
         return mode
 
     def get_colors(self) -> dict:
-        """获取当前生效的颜色方案"""
+        """获取当前生效的颜色方案（返回副本，防止外部意外修改）"""
         theme = self.get_effective_theme()
-        return DARK_THEME if theme == 'dark' else LIGHT_THEME
+        return dict(DARK_THEME if theme == 'dark' else LIGHT_THEME)
 
     # ---------- 通用存取 ----------
     def get(self, key: str, default=None):
         return self._settings.get(key, default)
 
     def set(self, key: str, value):
-        self._settings[key] = value
+        with self._lock:
+            self._settings[key] = value
         self.save()
 
     def set_debounced(self, key: str, value, delay_ms: int = 500):
         """防抖保存：延迟写入磁盘，高频调用时只保存最后一次"""
-        self._settings[key] = value
-        if hasattr(self, '_debounce_timers') and key in self._debounce_timers:
+        with self._lock:
+            self._settings[key] = value
+        # 取消已存在的定时器
+        if key in self._debounce_timers:
             self._debounce_timers[key].cancel()
-        else:
-            if not hasattr(self, '_debounce_timers'):
-                self._debounce_timers = {}
-        
-        import threading
-        self._debounce_timers[key] = threading.Timer(
-            delay_ms / 1000.0, 
-            lambda: self.save()
-        )
-        self._debounce_timers[key].daemon = True
-        self._debounce_timers[key].start()
+
+        def _do_save(k):
+            self.save()
+            self._debounce_timers.pop(k, None)
+
+        timer = threading.Timer(delay_ms / 1000.0, _do_save, args=[key])
+        timer.daemon = True
+        self._debounce_timers[key] = timer
+        timer.start()

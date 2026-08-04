@@ -10,6 +10,7 @@ import re
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
+from datetime import datetime, timezone
 
 from config import Config
 from db.database import get_connection
@@ -29,6 +30,8 @@ class ContestModule:
 
         self._current_id = None
         self._mode = 'view'
+        self._dirty = False
+        self._search_after_id = None
         self._build_ui()
         self._refresh_list()
 
@@ -84,7 +87,12 @@ class ContestModule:
         search_frame.pack(fill=tk.X, padx=8, pady=(6, 4))
 
         self.search_var = tk.StringVar()
-        self.search_var.trace_add('write', lambda *a: self._refresh_list())
+        self._search_after_id = None
+        def _debounced_refresh(*args):
+            if self._search_after_id:
+                self.parent.after_cancel(self._search_after_id)
+            self._search_after_id = self.parent.after(250, self._refresh_list)
+        self.search_var.trace_add('write', _debounced_refresh)
         tk.Entry(search_frame, textvariable=self.search_var,
                  font=(self.config.get('font_family'), 10),
                  bg=colors['bg_input'], fg=colors['fg_primary'],
@@ -240,8 +248,8 @@ class ContestModule:
     def _make_stat_card(self, parent, label, value):
         colors = self.config.get_colors()
         card = tk.Frame(parent, bg=colors['bg_card'],
-                         highlightbackground=colors['border_card'],
-                         highlightthickness=1, width=150, height=70)
+                         relief=tk.RIDGE, bd=1, highlightthickness=0,
+                         width=150, height=70)
         card.pack(side=tk.LEFT, padx=(0, 8))
         card.pack_propagate(False)
 
@@ -496,6 +504,15 @@ class ContestModule:
                   padx=20, pady=4, cursor='hand2',
                   command=self._save_contest).pack(side=tk.RIGHT, padx=4)
 
+        # 编辑字段变化时标记 dirty
+        for w in [self.e_contest_id, self.e_name, self.e_date, self.e_duration,
+                  self.e_rank, self.e_total, self.e_rating_before, self.e_rating_after,
+                  self.e_perf, self.e_solved, self.e_total_problems]:
+            w.bind('<KeyRelease>', self._mark_dirty)
+        self.e_review.bind('<KeyRelease>', self._mark_dirty)
+        self.e_platform.bind('<<ComboboxSelected>>', self._mark_dirty)
+        self.e_type.bind('<<ComboboxSelected>>', self._mark_dirty)
+
     # ============================================================
     # 表单操作
     # ============================================================
@@ -563,6 +580,8 @@ class ContestModule:
             return
         idx = sel[0]
         if idx < len(self._contest_ids):
+            if self._mode == 'edit' and self._dirty:
+                self._save_contest()
             self._current_id = self._contest_ids[idx]
             self._show_frame('view')
             self._load_view()
@@ -655,6 +674,9 @@ class ContestModule:
         except (ValueError, TypeError):
             return 0
 
+    def _mark_dirty(self, event=None):
+        self._dirty = True
+
     # ============================================================
     # 导入 CF/AtCoder
     # ============================================================
@@ -716,23 +738,35 @@ class ContestModule:
                         timeout=15
                     )
                     solved_data = solved_resp.json()
-                    solved_set = set()
+                    # 按 contestId 分组建立倒排索引
+                    solved_by_contest = {}
                     if solved_data.get('status') == 'OK':
                         for sub in solved_data['result']:
                             if sub.get('verdict') == 'OK':
                                 cid = sub.get('problem', {}).get('contestId', '')
                                 idx = sub.get('problem', {}).get('index', '')
-                                solved_set.add(f'{cid}{idx}')
+                                key = f'{cid}{idx}'
+                                m = re.match(r'(\d+)(\w+)', key)
+                                if m:
+                                    scid = m.group(1)
+                                    solved_by_contest.setdefault(scid, 0)
+                                    solved_by_contest[scid] += 1
 
                     # 获取题目列表（用于知道每题 rating）
                     prob_resp = requests.get(
                         'https://codeforces.com/api/problemset.problems',
                         timeout=10
                     )
-                    prob_map = {}
+                    # 按 contestId 分组建立倒排索引
+                    total_by_contest = {}
                     if prob_resp.json().get('status') == 'OK':
                         for p in prob_resp.json()['result']['problems']:
-                            prob_map[f'{p["contestId"]}{p["index"]}'] = p.get('rating', 0)
+                            pid = f'{p["contestId"]}{p["index"]}'
+                            m = re.match(r'(\d+)(\w+)', pid)
+                            if m:
+                                scid = m.group(1)
+                                total_by_contest.setdefault(scid, 0)
+                                total_by_contest[scid] += 1
 
                     imported = 0
                     conn = get_connection()
@@ -750,20 +784,9 @@ class ContestModule:
                         old_rating = c.get('oldRating', 0) or 0
                         new_rating = c.get('newRating', 0) or 0
 
-                        # 估算通过题数（从 submissions 中统计）
-                        solved = 0
-                        for sub in solved_set:
-                            # 提取 contestId
-                            m = re.match(r'(\d+)(\w+)', sub)
-                            if m and m.group(1) == str(cid):
-                                solved += 1
-
-                        # 总题数（从 problemset 获取）
-                        total_probs = 0
-                        for pid in prob_map:
-                            m = re.match(r'(\d+)(\w+)', pid)
-                            if m and m.group(1) == str(cid):
-                                total_probs += 1
+                        # 从倒排索引中查询
+                        solved = solved_by_contest.get(str(cid), 0)
+                        total_probs = total_by_contest.get(str(cid), 0)
 
                         conn.execute(
                             """INSERT INTO contests (platform, contest_id, contest_name, contest_type,
@@ -771,7 +794,7 @@ class ContestModule:
                                solved_count, total_problems, performance)
                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                             ('Codeforces', str(cid), contest_name, 'rated',
-                             c.get('ratingUpdateTimeSeconds', ''), rank,
+                             datetime.fromtimestamp(c.get('ratingUpdateTimeSeconds', 0), tz=timezone.utc).strftime('%Y-%m-%d') if c.get('ratingUpdateTimeSeconds') else '', rank,
                              old_rating, new_rating, new_rating - old_rating,
                              solved, total_probs, 0))
                         imported += 1
@@ -839,12 +862,34 @@ class ContestModule:
                         self.parent.after(0, lambda: status_label.config(text='没有找到比赛记录'))
                         return
 
-                    # 获取题目完成情况
+                    # 获取题目完成情况（kenkoooo submissions API）
                     ac_resp = requests.get(
-                        f'https://kenkoooo.com/atcoder/ac/log?user={handle}',
+                        f'https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user={handle}&from_second=0',
                         timeout=15
                     )
-                    ac_data = ac_resp.json() if ac_resp.status_code == 200 else {}
+                    ac_by_contest = {}
+                    if ac_resp.status_code == 200:
+                        submissions = ac_resp.json()
+                        for sub in submissions:
+                            if sub.get('result') == 'AC':
+                                cid = sub.get('contest_id', '')
+                                pid = sub.get('problem_id', '')
+                                if cid:
+                                    ac_by_contest.setdefault(cid, set())
+                                    ac_by_contest[cid].add(pid)
+
+                    # 获取每场比赛的题目总数
+                    cp_resp = requests.get(
+                        'https://kenkoooo.com/atcoder/resources/contest-problem.json',
+                        timeout=10
+                    )
+                    total_by_contest = {}
+                    if cp_resp.status_code == 200:
+                        for entry in cp_resp.json():
+                            cid = entry.get('contest_id', '')
+                            if cid:
+                                total_by_contest.setdefault(cid, 0)
+                                total_by_contest[cid] += 1
 
                     imported = 0
                     conn = get_connection()
@@ -870,14 +915,20 @@ class ContestModule:
                         # 提取日期
                         date_str = str(end_time)[:10] if end_time else ''
 
+                        # 计算通过题数和总题数
+                        solved_count = len(ac_by_contest.get(str(contest_id), set()))
+                        total_problems = total_by_contest.get(str(contest_id), 0)
+
                         conn.execute(
                             """INSERT INTO contests (platform, contest_id, contest_name, contest_type,
-                               contest_date, rank, rating_before, rating_after, rating_change, performance)
-                               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                               contest_date, rank, rating_before, rating_after, rating_change, performance,
+                               solved_count, total_problems)
+                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                             ('AtCoder', str(contest_id), contest_name,
                              'rated' if is_rated else 'unrated',
                              date_str, rank, old_rating, new_rating,
-                             new_rating - old_rating, performance))
+                             new_rating - old_rating, performance,
+                             solved_count, total_problems))
                         imported += 1
 
                     conn.commit()
