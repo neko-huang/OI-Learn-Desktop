@@ -181,6 +181,7 @@ def _highlight_code_blocks(html: str, theme: str = 'light') -> str:
     用 Pygments 为 <pre><code> 块添加语法高亮
     """
     try:
+        import html
         from pygments import highlight
         from pygments.lexers import get_lexer_by_name, guess_lexer
         from pygments.formatters import HtmlFormatter
@@ -194,7 +195,7 @@ def _highlight_code_blocks(html: str, theme: str = 'light') -> str:
         def replace_code_block(match):
             # group(1)=语言, group(2)=代码内容
             lang = match.group(1) or ''
-            code = match.group(2) or ''
+            code = html.unescape(match.group(2) or '')
 
             # 尝试按指定语言高亮
             try:

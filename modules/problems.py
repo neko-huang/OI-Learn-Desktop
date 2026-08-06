@@ -66,15 +66,15 @@ class ProblemsModule:
         self._search_debounce_id = None
         self.search_var.trace_add('write', lambda *a: self._on_search_debounced())
 
-    def _on_search_debounced(self):
-        """搜索框防抖：300ms 后刷新"""
-        if self._search_debounce_id:
-            self.parent.after_cancel(self._search_debounce_id)
-        self._search_debounce_id = self.parent.after(300, self._refresh_list)
-        self.search_entry = tk.Entry(top, textvariable=self.search_var, font=(self.config.get('font_family'), 10),
-                 bg=colors['bg_input'], fg=colors['fg_primary'],
-                 relief=tk.FLAT, width=20)
-        self.search_entry.pack(side=tk.LEFT, padx=(0, 12))
+        def _on_search_debounced():
+            """搜索框防抖：300ms 后刷新"""
+            if self._search_debounce_id:
+                self.parent.after_cancel(self._search_debounce_id)
+            self._search_debounce_id = self.parent.after(300, self._refresh_list)
+            self.search_entry = tk.Entry(top, textvariable=self.search_var, font=(self.config.get('font_family'), 10),
+                     bg=colors['bg_input'], fg=colors['fg_primary'],
+                     relief=tk.FLAT, width=20)
+            self.search_entry.pack(side=tk.LEFT, padx=(0, 12))
 
         tk.Label(top, text='状态:', font=(self.config.get('font_family'), 10),
                  bg=colors['bg_sidebar'], fg=colors['fg_secondary']).pack(side=tk.LEFT)
