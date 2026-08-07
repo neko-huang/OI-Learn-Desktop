@@ -14,9 +14,10 @@ from config import Config
 from db.database import get_connection
 from components.markdown_view import MarkdownView
 from modules.problem_meta import (
-    DIFFICULTIES, PROBLEM_CATEGORIES, PLATFORMS, STATUSES, STATUS_SYMBOLS,
+    DIFFICULTIES, PLATFORMS, STATUSES, STATUS_SYMBOLS,
     get_all_subtopic_tags,
 )
+from db.seed import ALGORITHM_CATEGORIES
 
 
 class ProblemsModule:
@@ -609,10 +610,10 @@ class ProblemsModule:
             self._mark_dirty()
 
     def _open_tag_picker(self):
-        """弹出标签选择对话框"""
+        """弹出标签选择对话框——按大纲层次结构（大类→主题→子知识点）"""
         dialog = tk.Toplevel(self.parent)
         dialog.title('选择标签')
-        dialog.geometry('700x500')
+        dialog.geometry('700x600')
         dialog.transient(self.parent)
         colors = self.config.get_colors()
         dialog.configure(bg=colors['bg_main'])
@@ -628,7 +629,7 @@ class ProblemsModule:
                  bg=colors['bg_input'], fg=colors['fg_primary'],
                  relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8), pady=8)
 
-        # 标签列表（按大类分组）
+        # 标签列表（按大纲层次结构：大类→主题→子知识点）
         canvas = tk.Canvas(dialog, bg=colors['bg_main'], highlightthickness=0)
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
         scroll = ttk.Scrollbar(dialog, orient=tk.VERTICAL, command=canvas.yview)
@@ -644,37 +645,61 @@ class ProblemsModule:
             for w in inner.winfo_children():
                 w.destroy()
             s = search_var.get().lower().strip()
-            for cat in PROBLEM_CATEGORIES:
-                cat_tags = [t for t in self._all_tags if t['category'] == cat]
-                if s:
-                    cat_tags = [t for t in cat_tags if s in t['name'].lower()]
-                if not cat_tags:
+
+            # 按大纲实际结构（ALGORITHM_CATEGORIES）展示
+            for cat in ALGORITHM_CATEGORIES:
+                # 是否展示本大类：至少有一个匹配的 subtopic
+                cat_visible = False
+                for topic in cat['topics']:
+                    for sub in topic['subtopics']:
+                        sub_name = sub[1]
+                        if (not s) or (s in sub_name.lower()):
+                            cat_visible = True
+                            break
+                    if cat_visible:
+                        break
+                if not cat_visible:
                     continue
+
                 # 大类标题
-                tk.Label(inner, text=cat,
+                tk.Label(inner, text=cat['name'],
                          font=(self.config.get('font_family'), 11, 'bold'),
                          bg=colors['bg_main'], fg=colors['fg_accent']
-                         ).pack(anchor=tk.W, pady=(6, 4))
-                # 标签按钮
-                row = tk.Frame(inner, bg=colors['bg_main'])
-                row.pack(fill=tk.X)
-                col_count = 5
-                for i, tag_info in enumerate(cat_tags):
-                    is_selected = tag_info['name'] in self.e_selected_tags
-                    color_bg = colors['bg_tag'] if is_selected else colors['bg_main']
-                    color_fg = colors['fg_link'] if is_selected else colors['fg_primary']
-                    btn = tk.Label(row, text=tag_info['name'],
-                                   font=(self.config.get('font_family'), 10),
-                                   bg=color_bg, fg=color_fg,
-                                   relief=tk.FLAT, bd=1, padx=8, pady=2,
-                                   cursor='hand2')
-                    btn.grid(row=i // col_count, column=i % col_count,
-                             sticky=tk.W, padx=2, pady=2)
-                    btn.bind('<Button-1>', lambda e, n=tag_info['name']: self._toggle_tag(n))
-                    btn.bind('<Enter>', lambda e, b=btn: b.configure(bg=colors['bg_tag'], fg=colors['fg_link']))
-                    btn.bind('<Leave>', lambda e, b=btn, sel=is_selected: b.configure(
-                        bg=colors['bg_tag'] if sel else colors['bg_main'],
-                        fg=colors['fg_link'] if sel else colors['fg_primary']))
+                         ).pack(anchor=tk.W, pady=(6, 2))
+
+                for topic in cat['topics']:
+                    # 主题标题（缩进）
+                    topic_subs = [sub for sub in topic['subtopics']
+                                  if (not s) or (s in sub[1].lower())]
+                    if not topic_subs:
+                        continue
+                    tk.Label(inner, text='  ' + topic['name'],
+                             font=(self.config.get('font_family'), 10, 'italic'),
+                             bg=colors['bg_main'], fg=colors['fg_secondary']
+                             ).pack(anchor=tk.W, pady=(2, 1))
+
+                    # 子知识点标签按钮
+                    row = tk.Frame(inner, bg=colors['bg_main'])
+                    row.pack(fill=tk.X, padx=(16, 0))
+                    col_count = 4
+                    for i, sub in enumerate(topic_subs):
+                        sub_name = sub[1]
+                        is_selected = sub_name in self.e_selected_tags
+                        color_bg = colors['bg_tag'] if is_selected else colors['bg_main']
+                        color_fg = colors['fg_link'] if is_selected else colors['fg_primary']
+                        btn = tk.Label(row, text=sub_name,
+                                       font=(self.config.get('font_family'), 10),
+                                       bg=color_bg, fg=color_fg,
+                                       relief=tk.FLAT, bd=1, padx=8, pady=2,
+                                       cursor='hand2')
+                        btn.grid(row=i // col_count, column=i % col_count,
+                                 sticky=tk.W, padx=2, pady=2)
+                        btn.bind('<Button-1>', lambda e, n=sub_name: self._toggle_tag(n))
+                        btn.bind('<Enter>', lambda e, b=btn: b.configure(
+                            bg=colors['bg_tag'], fg=colors['fg_link']))
+                        btn.bind('<Leave>', lambda e, b=btn, sel=is_selected: b.configure(
+                            bg=colors['bg_tag'] if sel else colors['bg_main'],
+                            fg=colors['fg_link'] if sel else colors['fg_primary']))
 
         self._tag_picker_refresh = _refresh_tags_list
 
