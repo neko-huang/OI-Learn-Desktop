@@ -905,3 +905,114 @@ def get_all_topic_ids():
                     'topic_name': topic['name'],
                 })
     return result
+# ============================================================
+# 数据库迁移：首次启动从硬编码导入数据库
+# ============================================================
+
+def migrate_categories_to_db():
+    """
+    将 ALGORITHM_CATEGORIES 导入数据库三张表（仅首次启动时执行）
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # 检查是否已导入
+    cursor.execute("SELECT COUNT(*) as cnt FROM categories")
+    if cursor.fetchone()['cnt'] > 0:
+        conn.close()
+        return
+
+    for cat_idx, cat in enumerate(ALGORITHM_CATEGORIES):
+        cursor.execute(
+            "INSERT INTO categories (category_id, name, description, sort_order, is_builtin) VALUES (?, ?, ?, ?, 1)",
+            (cat['id'], cat['name'], cat.get('desc', ''), cat_idx)
+        )
+        for topic_idx, topic in enumerate(cat['topics']):
+            cursor.execute(
+                "INSERT INTO category_topics (topic_id, category_id, name, description, sort_order, is_builtin) VALUES (?, ?, ?, ?, ?, 1)",
+                (topic['id'], cat['id'], topic['name'], topic.get('desc', ''), topic_idx)
+            )
+            for sub_idx, sub in enumerate(topic['subtopics']):
+                # sub is a tuple: (id, name, desc, difficulty, level)
+                cursor.execute(
+                    """INSERT INTO category_subtopics (subtopic_id, topic_id, name, description, difficulty, level, sort_order, is_builtin)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+                    (sub[0], topic['id'], sub[1], sub[2], sub[3], sub[4], sub_idx)
+                )
+
+    conn.commit()
+    conn.close()
+
+
+# ============================================================
+# 数据库读取函数（供 outline / problem_meta 使用）
+# ============================================================
+
+def get_categories_from_db():
+    """
+    从数据库读取完整的分类体系（与 ALGORITHM_CATEGORIES 结构一致）
+    若数据库为空则先迁移
+    """
+    migrate_categories_to_db()
+
+    conn = get_connection()
+    cats = conn.execute("SELECT * FROM categories ORDER BY sort_order").fetchall()
+    result = []
+    for cat in cats:
+        cat_dict = {
+            'id': cat['category_id'],
+            'name': cat['name'],
+            'desc': cat['description'],
+            'topics': []
+        }
+        topics = conn.execute(
+            "SELECT * FROM category_topics WHERE category_id=? ORDER BY sort_order",
+            (cat['category_id'],)
+        ).fetchall()
+        for topic in topics:
+            topic_dict = {
+                'id': topic['topic_id'],
+                'name': topic['name'],
+                'desc': topic['description'],
+                'subtopics': []
+            }
+            subs = conn.execute(
+                "SELECT * FROM category_subtopics WHERE topic_id=? ORDER BY sort_order",
+                (topic['topic_id'],)
+            ).fetchall()
+            for sub in subs:
+                topic_dict['subtopics'].append((
+                    sub['subtopic_id'],
+                    sub['name'],
+                    sub['description'],
+                    sub['difficulty'],
+                    sub['level'],
+                ))
+            cat_dict['topics'].append(topic_dict)
+        result.append(cat_dict)
+    conn.close()
+    return result
+
+
+def get_all_subtopic_tags_from_db():
+    """从数据库提取所有子知识点名称作为标签"""
+    migrate_categories_to_db()
+
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT s.subtopic_id, s.name, c.name as category_name
+        FROM category_subtopics s
+        JOIN category_topics t ON s.topic_id = t.topic_id
+        JOIN categories c ON t.category_id = c.category_id
+        ORDER BY c.sort_order, t.sort_order, s.sort_order
+    """).fetchall()
+    conn.close()
+
+    tags = []
+    for row in rows:
+        tags.append({
+            'id': row['subtopic_id'],
+            'name': row['name'],
+            'category': row['category_name'],
+        })
+    return tags

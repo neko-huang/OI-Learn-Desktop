@@ -33,15 +33,6 @@ STATUS_SYMBOLS = {'todo': '○', 'done': '●', 'review': '⟳'}
 
 
 def get_all_subtopic_tags():
-    """从大纲种子数据提取所有子知识点名称作为标签"""
-    from db.seed import ALGORITHM_CATEGORIES
-    tags = []
-    for cat in ALGORITHM_CATEGORIES:
-        for topic in cat['topics']:
-            for sub in topic['subtopics']:
-                tags.append({
-                    'id': sub[0],
-                    'name': sub[1],
-                    'category': cat['name'],
-                })
-    return tags
+    """从数据库提取所有子知识点名称作为标签"""
+    from db.seed import get_all_subtopic_tags_from_db
+    return get_all_subtopic_tags_from_db()

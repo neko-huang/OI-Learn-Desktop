@@ -11,7 +11,7 @@ from config import get_data_dir
 DB_PATH = os.path.join(get_data_dir(), 'info-learn.db')
 
 # 当前架构版本号（每次新增迁移 +1）
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # 备份写锁
 _backup_lock = threading.Lock()
@@ -204,6 +204,52 @@ def initialize_database():
         )
     """)
 
+    # ============================================================
+    # 9. 大纲分类体系（方案二：可编辑的大纲/标签）
+    # ============================================================
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS categories (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id     TEXT NOT NULL UNIQUE,
+            name            TEXT NOT NULL,
+            description     TEXT DEFAULT '',
+            sort_order      INTEGER DEFAULT 0,
+            is_builtin      INTEGER DEFAULT 1,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS category_topics (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic_id        TEXT NOT NULL UNIQUE,
+            category_id     TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            description     TEXT DEFAULT '',
+            sort_order      INTEGER DEFAULT 0,
+            is_builtin      INTEGER DEFAULT 1,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS category_subtopics (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            subtopic_id     TEXT NOT NULL UNIQUE,
+            topic_id        TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            description     TEXT DEFAULT '',
+            difficulty      INTEGER DEFAULT 1,
+            level           TEXT DEFAULT 'entry',
+            sort_order      INTEGER DEFAULT 0,
+            is_builtin      INTEGER DEFAULT 1,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_category_topics_cat ON category_topics(category_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_category_subtopics_topic ON category_subtopics(topic_id)")
+
     conn.commit()
     conn.close()
 
@@ -309,6 +355,7 @@ _MIGRATIONS = {
     4: ('v1.4: 创建 practice_state 表', _migrate_v1_4),
     5: ('v1.5: custom_topics.desc 改名 description', _migrate_v1_5),
     6: ('v1.6: 补充 mistakes 表索引', _migrate_v1_6),
+    7: ('v1.7: 创建 categories/category_topics/category_subtopics 表', None),
 }
 
 

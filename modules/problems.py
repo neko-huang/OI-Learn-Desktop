@@ -17,7 +17,7 @@ from modules.problem_meta import (
     DIFFICULTIES, PLATFORMS, STATUSES, STATUS_SYMBOLS,
     get_all_subtopic_tags,
 )
-from db.seed import ALGORITHM_CATEGORIES
+from db.seed import get_categories_from_db
 
 
 class ProblemsModule:
@@ -672,8 +672,9 @@ class ProblemsModule:
                 w.destroy()
             s = search_var.get().lower().strip()
 
-            # 按大纲实际结构（ALGORITHM_CATEGORIES）展示
-            for cat in ALGORITHM_CATEGORIES:
+            # 按大纲实际结构（从数据库）展示
+            categories = get_categories_from_db()
+            for cat in categories:
                 # 是否展示本大类：至少有一个匹配的 subtopic
                 cat_visible = False
                 for topic in cat['topics']:
