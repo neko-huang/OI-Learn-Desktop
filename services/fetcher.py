@@ -6,6 +6,9 @@
 import json
 import requests
 from config import Config
+from utils.logger import get_logger
+
+_log = get_logger("fetcher")  # 题目获取服务统一日志
 
 # 搜索缓存（避免重复请求，最多500条）
 _cache = {}
@@ -54,20 +57,20 @@ def search_luogu(keyword: str = '', difficulty: str = '', page: int = 1, limit: 
         # 反爬拦截检测：body 以 < 开头是 HTML 而非 JSON
         if resp.text.startswith('<'):
             if not cookie:
-                print('[洛谷] 反爬拦截：请在设置中配置 luogu_cookie（登录洛谷后从浏览器复制）')
+                _log.warning('洛谷反爬拦截：请在设置中配置 luogu_cookie（登录洛谷后从浏览器复制）')
             else:
-                print('[洛谷] Cookie 可能已过期，请更新')
+                _log.warning('洛谷 Cookie 可能已过期，请更新')
             return []
 
         data = resp.json()
 
         if data.get('code') != 200:
-            print(f'[洛谷] API 返回 code={data.get("code")}')
+            _log.warning(f'洛谷 API 返回 code={data.get("code")}')
             return []
 
         result = data.get('currentData', {}).get('problems', {}).get('result', [])
         if not result:
-            print(f'[洛谷] 关键词 "{keyword}" 无搜索结果')
+            _log.info(f'洛谷 关键词 "{keyword}" 无搜索结果')
             return []
 
         problems = []
@@ -87,16 +90,16 @@ def search_luogu(keyword: str = '', difficulty: str = '', page: int = 1, limit: 
         return problems
 
     except requests.exceptions.Timeout:
-        print(f'[洛谷] 请求超时')
+        _log.warning('洛谷 请求超时')
         return []
     except requests.exceptions.ConnectionError:
-        print(f'[洛谷] 网络连接失败')
+        _log.warning('洛谷 网络连接失败')
         return []
     except json.JSONDecodeError:
-        print(f'[洛谷] 返回非JSON数据（可能被反爬拦截），请配置登录Cookie')
+        _log.warning('洛谷 返回非JSON数据（可能被反爬拦截），请配置登录Cookie')
         return []
     except Exception as e:
-        print(f'[洛谷] 错误: {e}')
+        _log.error(f'洛谷 错误: {e}')
         return []
 
 
@@ -116,7 +119,7 @@ def search_atcoder(keyword: str = '', limit: int = 20):
             timeout=15
         )
         if resp.status_code != 200:
-            print(f'[AT] HTTP {resp.status_code}')
+            _log.warning(f'AtCoder HTTP {resp.status_code}')
             return []
 
         problems_data = resp.json()
@@ -152,10 +155,10 @@ def search_atcoder(keyword: str = '', limit: int = 20):
         return problems[:limit]
 
     except requests.exceptions.Timeout:
-        print(f'[AT] 请求超时')
+        _log.warning('AtCoder 请求超时')
         return []
     except Exception as e:
-        print(f'[AT] 错误: {e}')
+        _log.error(f'AtCoder 错误: {e}')
         return []
 
 

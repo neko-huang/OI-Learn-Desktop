@@ -7,6 +7,9 @@ import sqlite3
 import os
 import threading
 from config import get_data_dir
+from utils.logger import get_logger
+
+_log = get_logger("db")  # 数据库模块统一日志
 
 DB_PATH = os.path.join(get_data_dir(), 'info-learn.db')
 
@@ -398,17 +401,17 @@ def migrate():
         for version in range(current_version + 1, SCHEMA_VERSION + 1):
             migration = _MIGRATIONS.get(version)
             if migration is None:
-                print(f"[数据库] 跳过未知迁移版本 {version}")
+                _log.warning(f"跳过未知迁移版本 {version}")
                 continue
             desc, func = migration
-            print(f"[数据库] 执行迁移 {version} - {desc}")
+            _log.info(f"执行迁移 {version} - {desc}")
             func(conn)
             conn.commit()
 
         _set_current_version(conn, SCHEMA_VERSION)
         conn.commit()
     except Exception as e:
-        print(f"[数据库] 迁移失败: {e}")
+        _log.error(f"数据库迁移失败: {e}")
         raise
     finally:
         conn.close()
