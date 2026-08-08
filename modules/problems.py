@@ -185,7 +185,7 @@ class ProblemsModule:
             lb = tk.Label(rf, text=f'{sym} {row["title"]}{pid_str}',
                           font=(self.config.get('font_family'), 10),
                           bg=colors['bg_sidebar'], fg=colors['fg_primary'],
-                          anchor=tk.W, cursor='hand2')
+                          anchor=tk.W, cursor='hand2', wraplength=280)
             lb.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
             lb.bind('<Button-1>', lambda e, pid=row['id']: self._view_problem(pid))
             lb.bind('<Enter>', lambda e, l=lb: l.configure(fg=colors['fg_accent']))
