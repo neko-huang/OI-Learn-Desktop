@@ -262,6 +262,19 @@ class OutlineModule:
         self.tree.delete(*self.tree.get_children(''))
 
     def _populate_tree(self):
+        # 记录当前展开的节点，重建后恢复（避免编辑后树全部收起）
+        _expanded = set()
+        try:
+            for item in self.tree.get_children(''):
+                if self.tree.item(item, 'open'):
+                    _expanded.add(item)
+                # 也记录子节点的展开状态
+                for child in self.tree.get_children(item):
+                    if self.tree.item(child, 'open'):
+                        _expanded.add(child)
+        except Exception:
+            pass
+
         self._delete_all_tree_items()
 
         for cat in self.categories:
@@ -309,6 +322,13 @@ class OutlineModule:
 
             if not has_visible:
                 self.tree.delete(cat_node)
+
+        # 恢复之前展开的节点
+        for item in _expanded:
+            try:
+                self.tree.item(item, open=True)
+            except tk.TclError:
+                pass
 
     # ============================================================
     # 进度
@@ -450,6 +470,8 @@ class OutlineModule:
         dialog.title('添加知识点')
         dialog.geometry('450x350')
         dialog.transient(self.parent)
+        dialog.lift()
+        dialog.focus_force()
         colors = self.config.get_colors()
         dialog.configure(bg=colors['bg_main'])
 
@@ -487,6 +509,7 @@ class OutlineModule:
         def _save():
             name = name_var.get().strip()
             if not name:
+                messagebox.showwarning('提示', '名称不能为空')
                 return
             try:
                 diff = int(diff_var.get())
@@ -534,6 +557,8 @@ class OutlineModule:
         dialog.title('编辑知识点')
         dialog.geometry('450x350')
         dialog.transient(self.parent)
+        dialog.lift()
+        dialog.focus_force()
         colors = self.config.get_colors()
         dialog.configure(bg=colors['bg_main'])
 
@@ -571,6 +596,7 @@ class OutlineModule:
         def _save():
             name = name_var.get().strip()
             if not name:
+                messagebox.showwarning('提示', '名称不能为空')
                 return
             try:
                 conn = get_connection()
@@ -649,10 +675,15 @@ class OutlineModule:
     # ----- 大类 -----
 
     def _add_category(self):
+        if not self._edit_mode:
+            self.app.set_status('请先开启编辑模式（点击 ✏️ 编辑）')
+            return
         dialog = tk.Toplevel(self.parent)
         dialog.title('添加大类')
-        dialog.geometry('400x250')
+        dialog.geometry('420x340')
         dialog.transient(self.parent)
+        dialog.lift()
+        dialog.focus_force()
         colors = self.config.get_colors()
         dialog.configure(bg=colors['bg_main'])
 
@@ -676,6 +707,7 @@ class OutlineModule:
         def _save():
             name = name_var.get().strip()
             if not name:
+                messagebox.showwarning('提示', '名称不能为空')
                 return
             import time
             cat_id = f'custom_cat_{int(time.time_ns())}'
@@ -709,8 +741,10 @@ class OutlineModule:
 
         dialog = tk.Toplevel(self.parent)
         dialog.title('编辑大类')
-        dialog.geometry('400x250')
+        dialog.geometry('420x340')
         dialog.transient(self.parent)
+        dialog.lift()
+        dialog.focus_force()
         colors = self.config.get_colors()
         dialog.configure(bg=colors['bg_main'])
 
@@ -735,6 +769,7 @@ class OutlineModule:
         def _save():
             name = name_var.get().strip()
             if not name:
+                messagebox.showwarning('提示', '名称不能为空')
                 return
             try:
                 conn = get_connection()
@@ -788,8 +823,10 @@ class OutlineModule:
 
         dialog = tk.Toplevel(self.parent)
         dialog.title('添加主题')
-        dialog.geometry('400x250')
+        dialog.geometry('420x340')
         dialog.transient(self.parent)
+        dialog.lift()
+        dialog.focus_force()
         colors = self.config.get_colors()
         dialog.configure(bg=colors['bg_main'])
 
@@ -814,6 +851,7 @@ class OutlineModule:
         def _save():
             name = name_var.get().strip()
             if not name:
+                messagebox.showwarning('提示', '名称不能为空')
                 return
             import time
             topic_id = f'custom_topic_{int(time.time_ns())}'
@@ -849,8 +887,10 @@ class OutlineModule:
 
         dialog = tk.Toplevel(self.parent)
         dialog.title('编辑主题')
-        dialog.geometry('400x250')
+        dialog.geometry('420x340')
         dialog.transient(self.parent)
+        dialog.lift()
+        dialog.focus_force()
         colors = self.config.get_colors()
         dialog.configure(bg=colors['bg_main'])
 
@@ -876,6 +916,7 @@ class OutlineModule:
         def _save():
             name = name_var.get().strip()
             if not name:
+                messagebox.showwarning('提示', '名称不能为空')
                 return
             try:
                 conn = get_connection()
@@ -971,6 +1012,8 @@ class OutlineModule:
         dialog.title('添加子知识点')
         dialog.geometry('450x350')
         dialog.transient(self.parent)
+        dialog.lift()
+        dialog.focus_force()
         colors = self.config.get_colors()
         dialog.configure(bg=colors['bg_main'])
 
@@ -1008,6 +1051,7 @@ class OutlineModule:
         def _save():
             name = name_var.get().strip()
             if not name:
+                messagebox.showwarning('提示', '名称不能为空')
                 return
             import time
             sub_id = f'custom_sub_{int(time.time_ns())}'
@@ -1052,6 +1096,8 @@ class OutlineModule:
         dialog.title('编辑子知识点')
         dialog.geometry('450x350')
         dialog.transient(self.parent)
+        dialog.lift()
+        dialog.focus_force()
         colors = self.config.get_colors()
         dialog.configure(bg=colors['bg_main'])
 
@@ -1090,6 +1136,7 @@ class OutlineModule:
         def _save():
             name = name_var.get().strip()
             if not name:
+                messagebox.showwarning('提示', '名称不能为空')
                 return
             try:
                 conn = get_connection()
@@ -1170,6 +1217,9 @@ class OutlineModule:
     # ----- 重置出厂 -----
 
     def _reset_to_factory(self):
+        if not self._edit_mode:
+            self.app.set_status('请先开启编辑模式（点击 ✏️ 编辑）')
+            return
         if not messagebox.askyesno('确认重置', '确定恢复出厂大纲/标签吗？\n所有自定义修改将被清除。'):
             return
         try:
@@ -1211,6 +1261,8 @@ class OutlineModule:
         dialog.title('关联百科条目')
         dialog.geometry('400x350')
         dialog.transient(self.parent)
+        dialog.lift()
+        dialog.focus_force()
         colors = self.config.get_colors()
         dialog.configure(bg=colors['bg_main'])
 
