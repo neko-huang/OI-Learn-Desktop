@@ -268,6 +268,10 @@ def _load_module(self, module_id):
 
 文件：`data/info-learn.db`，WAL 模式，启用外键
 
+> ⚠️ **迁移 / 备份须知（WAL 模式）**：数据库以 WAL 模式运行，除 `info-learn.db` 外还会生成 `info-learn.db-wal` 和 `info-learn.db-shm` 两个附属文件。近期未「落盘」的写操作记录在 `-wal` 中。
+> - **复制或迁移时务必连同整个 `data/` 目录一起拷贝**，只拷 `info-learn.db` 会丢失 `-wal` 里尚未合并的改动。
+> - 正常退出应用后 SQLite 会自动把 WAL 合并回主库；若担心残留，可在退出前执行一次 `PRAGMA wal_checkpoint(TRUNCATE)`。
+
 | 表 | 用途 | 关键字段 |
 |----|------|---------|
 | `outline_progress` | 大纲掌握度 | topic_id(UNIQUE), mastery |
