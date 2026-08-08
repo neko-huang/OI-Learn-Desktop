@@ -41,5 +41,8 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
+    # PyInstaller 6 默认把内容收进 _internal/，但应用 get_app_dir() 预期
+    # 数据/资源就在 .exe 同级目录。固定为 '.' 保持旧布局，避免运行时找不到 data/。
+    contents_directory='.',
     name='OI-Learn',
 )

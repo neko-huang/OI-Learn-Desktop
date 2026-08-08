@@ -17,10 +17,20 @@ import uuid
 # 路径工具 —— 所有路径都相对于程序所在目录
 # ============================================================
 def get_app_dir() -> str:
-    """获取程序根目录（打包后指向 .exe 所在目录，开发时指向项目目录）"""
+    """获取程序根目录（打包后指向 .exe 所在目录，开发时指向项目目录）
+
+    注意：PyInstaller 6 的 onedir 模式会把数据/资源收进 `_internal` 子目录，
+    而本项目代码中 data/ 与 assets/ 都按「程序根目录 + 子目录」拼接，
+    因此 frozen 下优先探测 `_internal`，找不到时再回退到 .exe 同级目录，
+    兼容不同 PyInstaller 版本的产物布局。
+    """
     if getattr(sys, 'frozen', False):
         # PyInstaller 打包后，sys.executable 是 .exe 路径
-        return os.path.dirname(sys.executable)
+        base = os.path.dirname(sys.executable)
+        internal = os.path.join(base, '_internal')
+        if os.path.isdir(internal):
+            return internal
+        return base
     else:
         # 开发时，main.py 的上一级就是项目根目录
         return os.path.dirname(os.path.abspath(__file__))
