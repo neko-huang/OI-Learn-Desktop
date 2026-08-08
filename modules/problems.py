@@ -8,7 +8,7 @@
 
 import json
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, font
 
 from config import Config
 from db.database import get_connection
@@ -182,10 +182,36 @@ class ProblemsModule:
             # 第一行：标题（点击查看）+ 状态符号
             sym = STATUS_SYMBOLS.get(row['status'], '○')
             pid_str = f' [{row["platform_id"]}]' if row.get('platform_id') else ''
-            lb = tk.Label(rf, text=f'{sym} {row["title"]}{pid_str}',
+
+            # 截断题名：用字体测量，超宽时加 "…" 保留平台编号
+            try:
+                if not hasattr(self, '_list_font'):
+                    self._list_font = font.Font(family=self.config.get('font_family'), size=10)
+                # 可用宽度 ≈ sidebar(320) - scrollbar(15) - rf padx(16) - lb padx(4) - sym(15)
+                _max_w = 260
+                _full = f'{row["title"]}{pid_str}'
+                if self._list_font.measure(_full) > _max_w:
+                    t = row['title']
+                    lo, hi = 0, len(t)
+                    _trunc = t
+                    while lo <= hi:
+                        mid = (lo + hi) // 2
+                        cand = t[:mid] + '…'
+                        if self._list_font.measure(f'{cand}{pid_str}') <= _max_w:
+                            _trunc = cand
+                            lo = mid + 1
+                        else:
+                            hi = mid - 1
+                    display_title = _trunc
+                else:
+                    display_title = row['title']
+            except Exception:
+                display_title = row['title']
+
+            lb = tk.Label(rf, text=f'{sym} {display_title}{pid_str}',
                           font=(self.config.get('font_family'), 10),
                           bg=colors['bg_sidebar'], fg=colors['fg_primary'],
-                          anchor=tk.W, cursor='hand2', wraplength=280)
+                          anchor=tk.W, cursor='hand2')
             lb.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
             lb.bind('<Button-1>', lambda e, pid=row['id']: self._view_problem(pid))
             lb.bind('<Enter>', lambda e, l=lb: l.configure(fg=colors['fg_accent']))
