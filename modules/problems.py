@@ -260,6 +260,9 @@ class ProblemsModule:
                      font=(self.config.get('font_family'), 10),
                      bg=colors['bg_sidebar'], fg=colors['fg_muted']).pack(pady=20)
 
+        # 弹性填充：内容不足时撑满 Canvas 高度，消除滚动空白区域
+        tk.Frame(self.list_inner, bg=colors['bg_sidebar']).pack(fill=tk.BOTH, expand=True)
+
     # ============================================================
     # 右侧面板
     # ============================================================
