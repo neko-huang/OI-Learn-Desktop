@@ -183,21 +183,23 @@ class ProblemsModule:
             sym = STATUS_SYMBOLS.get(row['status'], '○')
             pid_str = f' [{row["platform_id"]}]' if row.get('platform_id') else ''
 
-            # 截断题名：用字体测量，超宽时加 "…" 保留平台编号
+            # 截断题名：用字体测量，超宽时加 "…"；题号独立显示不截断
             try:
                 if not hasattr(self, '_list_font'):
                     self._list_font = font.Font(family=self.config.get('font_family'), size=10)
-                # 可用宽度 ≈ sidebar(320) - scrollbar(15) - rf padx(16) - lb padx(4) - sym(15)
-                _max_w = 260
-                _full = f'{row["title"]}{pid_str}'
-                if self._list_font.measure(_full) > _max_w:
+                # 标题可用宽度 ≈ sidebar(320) - scrollbar(15) - rf padx(16) - title_row padx(8) - sym(~15) - pid_str(测量) - 边距(8)
+                _row_w = 281
+                _sym_w = self._list_font.measure('○ ')
+                _pid_w = self._list_font.measure(pid_str) if pid_str else 0
+                _max_w = _row_w - _sym_w - _pid_w - 8
+                if _max_w > 20 and self._list_font.measure(row['title']) > _max_w:
                     t = row['title']
                     lo, hi = 0, len(t)
                     _trunc = t
                     while lo <= hi:
                         mid = (lo + hi) // 2
                         cand = t[:mid] + '…'
-                        if self._list_font.measure(f'{cand}{pid_str}') <= _max_w:
+                        if self._list_font.measure(cand) <= _max_w:
                             _trunc = cand
                             lo = mid + 1
                         else:
@@ -208,18 +210,27 @@ class ProblemsModule:
             except Exception:
                 display_title = row['title']
 
-            lb = tk.Label(rf, text=f'{sym} {display_title}{pid_str}',
-                          font=(self.config.get('font_family'), 10),
-                          bg=colors['bg_sidebar'], fg=colors['fg_primary'],
-                          anchor=tk.W, cursor='hand2')
-            lb.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
-            lb.bind('<Button-1>', lambda e, pid=row['id']: self._view_problem(pid))
-            lb.bind('<Enter>', lambda e, l=lb: l.configure(fg=colors['fg_accent']))
-            lb.bind('<Leave>', lambda e, l=lb: l.configure(fg=colors['fg_primary']))
+            # 题号固定显示，标题截断；格式：○ 截断标题...[P4145]
+            title_row = tk.Frame(rf, bg=colors['bg_sidebar'])
+            title_row.pack(fill=tk.X, padx=(4, 4))
+            tk.Label(title_row, text=sym, font=(self.config.get('font_family'), 10),
+                     bg=colors['bg_sidebar'], fg=colors['fg_primary']).pack(side=tk.LEFT)
+            tk.Label(title_row, text=display_title, font=(self.config.get('font_family'), 10),
+                     bg=colors['bg_sidebar'], fg=colors['fg_primary'],
+                     anchor=tk.W, cursor='hand2').pack(side=tk.LEFT, fill=tk.X, expand=True)
+            pid_lbl = tk.Label(title_row, text=pid_str, font=(self.config.get('font_family'), 10),
+                               bg=colors['bg_sidebar'], fg=colors['fg_muted'],
+                               anchor=tk.E, cursor='hand2')
+            pid_lbl.pack(side=tk.RIGHT)
+            for w in (title_row.winfo_children()):
+                if isinstance(w, tk.Label):
+                    w.bind('<Button-1>', lambda e, pid=row['id']: self._view_problem(pid))
+                    w.bind('<Enter>', lambda e, l=w: l.configure(fg=colors['fg_accent']))
+                    w.bind('<Leave>', lambda e, l=w: l.configure(fg=colors['fg_primary']))
 
             # 第二行：平台 + [编辑] [删除]
             bottom_row = tk.Frame(rf, bg=colors['bg_sidebar'])
-            bottom_row.pack(fill=tk.X, padx=(20, 0))
+            bottom_row.pack(fill=tk.X, padx=(20, 4))
             tk.Label(bottom_row, text=row['platform'], font=(self.config.get('font_family'), 9),
                      bg=colors['bg_sidebar'], fg=colors['fg_muted']).pack(side=tk.LEFT, padx=(0, 8))
 
