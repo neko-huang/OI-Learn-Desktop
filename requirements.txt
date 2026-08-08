@@ -4,3 +4,4 @@ tkinterweb>=3.24
 requests>=2.31
 pyinstaller>=6.0
 katex>=0.0.4
+cryptography>=42.0

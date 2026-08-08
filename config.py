@@ -1,15 +1,17 @@
 """
 配置管理模块
-负责：主题切换（亮色/暗色/跟随系统）、配置文件持久化、颜色方案定义
+负责：主题切换（亮色/暗色/跟随系统）、配置文件持久化、颜色方案定义、敏感数据加密存储
 """
 
 import base64
+import hashlib
 import json
 import os
 import sys
 import platform
 import threading
 import time
+import uuid
 
 # ============================================================
 # 路径工具 —— 所有路径都相对于程序所在目录
@@ -34,6 +36,75 @@ def get_data_dir() -> str:
 def get_settings_path() -> str:
     """获取配置文件路径"""
     return os.path.join(get_data_dir(), 'settings.json')
+
+
+# ============================================================
+# 敏感数据加密 —— Fernet 机器绑定密钥
+# ============================================================
+# 设计思路：
+#   - 用 uuid.getnode()（网卡 MAC）+ os.getlogin()（当前用户名）作为机器指纹
+#   - 经 PBKDF2-HMAC-SHA256 派生出固定长度的 Fernet 密钥
+#   - 同一台机器、同一个用户能解密；换机器或换用户则无法解密（安全降级为空）
+#   - 向后兼容：旧 base64 格式的值自动识别并迁移到新加密格式
+_FERNET_KEY = None  # 延迟初始化，首次使用时计算
+
+
+def _get_fernet_key() -> bytes:
+    """
+    派生机器绑定的 Fernet 密钥。
+    密钥 = PBKDF2(MAC地址 + 用户名, salt="OI-Learn-Desktop", 迭代 100000)
+    返回 URL-safe base64 编码的 32 字节密钥（Fernet 要求）。
+    """
+    global _FERNET_KEY
+    if _FERNET_KEY is not None:
+        return _FERNET_KEY
+
+    # 收集机器指纹
+    machine_id = str(uuid.getnode())          # 网卡 MAC 的整数表示
+    try:
+        user_id = os.getlogin()              # 当前登录用户名
+    except Exception:
+        user_id = "unknown"
+
+    fingerprint = f"{machine_id}:{user_id}".encode("utf-8")
+
+    # PBKDF2 派生 32 字节密钥（Fernet 需要 url-safe base64 编码的 32 字节）
+    key = hashlib.pbkdf2_hmac(
+        "sha256",
+        fingerprint,
+        salt=b"OI-Learn-Desktop-v1",       # 固定 salt，保证同机同用户结果一致
+        iterations=100000,                    # 足够慢以抵抗暴力破解
+        dklen=32,
+    )
+    import base64 as b64
+    _FERNET_KEY = b64.urlsafe_b64encode(key)
+    return _FERNET_KEY
+
+
+def _encrypt_sensitive(plaintext: str) -> str:
+    """用 Fernet 加密敏感字符串，返回 base64 编码的密文。"""
+    if not plaintext:
+        return ""
+    from cryptography.fernet import Fernet
+    f = Fernet(_get_fernet_key())
+    return f.encrypt(plaintext.encode("utf-8")).decode("ascii")
+
+
+def _decrypt_sensitive(ciphertext: str) -> str:
+    """解密 Fernet 密文。解密失败时返回空字符串并记录日志。"""
+    if not ciphertext:
+        return ""
+    try:
+        from cryptography.fernet import Fernet
+        f = Fernet(_get_fernet_key())
+        return f.decrypt(ciphertext.encode("ascii"), ttl=None).decode("utf-8")
+    except Exception:
+        # 可能原因：换了机器/用户、数据被篡改、或仍是旧的 base64 格式
+        from utils.logger import get_logger
+        get_logger("config").warning(
+            "Cookie 解密失败（可能换了机器或数据格式变更），将清空"
+        )
+        return ""
 
 
 # ============================================================
@@ -218,6 +289,8 @@ class Config:
     # ---------- 持久化 ----------
     def _load(self):
         """从配置文件加载设置（合并所有保存的键，不限于默认列表）"""
+        from utils.logger import get_logger
+        _log = get_logger("config")
         path = get_settings_path()
         if os.path.exists(path):
             try:
@@ -225,32 +298,43 @@ class Config:
                     saved = json.load(f)
                 # 合并所有保存的键到 _settings（已保存的键覆盖默认值，默认键保留)
                 self._settings.update(saved)
-                # 解码已加密存储的 luogu_cookie
+
+                # 解密 luogu_cookie（支持新旧两种格式）
                 if 'luogu_cookie' in self._settings and self._settings['luogu_cookie']:
-                    try:
-                        self._settings['luogu_cookie'] = base64.b64decode(
-                            self._settings['luogu_cookie'].encode()
-                        ).decode()
-                    except Exception:
-                        # 非 base64 编码视为明文，保持原样
-                        pass
-            except (json.JSONDecodeError, IOError):
-                pass
+                    raw = self._settings['luogu_cookie']
+                    # 尝试 Fernet 解密（新格式）
+                    decrypted = _decrypt_sensitive(raw)
+                    if decrypted:
+                        self._settings['luogu_cookie'] = decrypted
+                    else:
+                        # 回退：尝试旧 base64 格式（向后兼容）
+                        try:
+                            self._settings['luogu_cookie'] = base64.b64decode(
+                                raw.encode()
+                            ).decode()
+                            _log.info("检测到旧格式 Cookie，已自动迁移（下次保存将加密）")
+                        except Exception:
+                            # 既非 Fernet 也非合法 base64，视为明文保持原样
+                            pass
+            except (json.JSONDecodeError, IOError) as e:
+                _log.warning(f"配置文件加载失败: {e}")
 
     def save(self):
         """保存配置到文件"""
+        from utils.logger import get_logger
+        _log = get_logger("config")
         path = get_settings_path()
         try:
-            # 对 luogu_cookie 进行 base64 混淆后存储
+            # 对 luogu_cookie 进行 Fernet 加密后存储（机器绑定）
             settings_to_save = dict(self._settings)
             if settings_to_save.get('luogu_cookie'):
-                settings_to_save['luogu_cookie'] = base64.b64encode(
-                    settings_to_save['luogu_cookie'].encode()
-                ).decode()
+                settings_to_save['luogu_cookie'] = _encrypt_sensitive(
+                    settings_to_save['luogu_cookie']
+                )
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(settings_to_save, f, ensure_ascii=False, indent=2)
         except (IOError, TypeError) as e:
-            print(f"[配置] 保存失败: {e}")
+            _log.error(f"配置保存失败: {e}")
 
     # ---------- 主题相关 ----------
     def get_theme_mode(self) -> str:
