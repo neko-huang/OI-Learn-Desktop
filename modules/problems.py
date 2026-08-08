@@ -65,17 +65,18 @@ class ProblemsModule:
                  bg=colors['bg_sidebar'], fg=colors['fg_secondary']).pack(side=tk.LEFT, padx=(4, 4))
         self.search_var = tk.StringVar()
         self._search_debounce_id = None
-        self.search_var.trace_add('write', lambda *a: self._on_search_debounced())
+        self.search_entry = tk.Entry(top, textvariable=self.search_var, font=(self.config.get('font_family'), 10),
+                 bg=colors['bg_input'], fg=colors['fg_primary'],
+                 relief=tk.FLAT, width=20)
+        self.search_entry.pack(side=tk.LEFT, padx=(0, 12))
 
         def _on_search_debounced():
             """搜索框防抖：300ms 后刷新"""
             if self._search_debounce_id:
                 self.parent.after_cancel(self._search_debounce_id)
             self._search_debounce_id = self.parent.after(300, self._refresh_list)
-            self.search_entry = tk.Entry(top, textvariable=self.search_var, font=(self.config.get('font_family'), 10),
-                     bg=colors['bg_input'], fg=colors['fg_primary'],
-                     relief=tk.FLAT, width=20)
-            self.search_entry.pack(side=tk.LEFT, padx=(0, 12))
+
+        self.search_var.trace_add('write', lambda *a: _on_search_debounced())
 
         tk.Label(top, text='状态:', font=(self.config.get('font_family'), 10),
                  bg=colors['bg_sidebar'], fg=colors['fg_secondary']).pack(side=tk.LEFT)
@@ -131,6 +132,14 @@ class ProblemsModule:
         self._list_win = self.list_canvas.create_window((0, 0), window=self.list_inner, anchor=tk.NW)
         self.list_canvas.bind('<Configure>', lambda e: self.list_canvas.itemconfig(self._list_win, width=e.width))
         self.list_inner.bind('<Configure>', lambda e: self.list_canvas.configure(scrollregion=self.list_canvas.bbox('all')))
+
+        # 鼠标滚轮滚动
+        def _on_enter(e):
+            self.list_canvas.bind_all('<MouseWheel>', lambda ev: self.list_canvas.yview_scroll(int(-1*(ev.delta/120)), 'units'))
+        def _on_leave(e):
+            self.list_canvas.unbind_all('<MouseWheel>')
+        self.list_canvas.bind('<Enter>', _on_enter)
+        self.list_canvas.bind('<Leave>', _on_leave)
 
     def _toggle_left_panel(self):
         if self._left_visible:
