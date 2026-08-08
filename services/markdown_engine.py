@@ -6,7 +6,7 @@ Markdown 渲染引擎
   - markdown 库：核心 Markdown → HTML 转换
   - Pygments：代码块语法高亮，生成内联 CSS 的 <pre> 块
   - 数学公式（默认分支，离线零依赖）：把 $...$ / $$...$$ 里的内容
-        先做「LaTeX 命令 → Unicode」转换（\frac \sqrt \sum … 都能识别），
+        先做「LaTeX 命令 → Unicode」转换（\\frac \\sqrt \\sum … 都能识别），
         再用「数学专用字体 + 浅色背景」的 span/div 包装显示。
         内容本身是 Unicode（√、∑ 等）时基本原样保留，只顺手美化。
   - 真实 KaTeX（可选，默认关闭）：assets/katex/ 已本地化打包，不依赖 CDN。
@@ -281,6 +281,51 @@ def render_markdown(md_text: str, theme: str = 'light') -> str:
     return full_html
 
 
+def _wrap_bare_text(highlighted: str) -> str:
+    """
+    将 Pygments 高亮输出中 <pre> 内未被 <span> 包裹的裸文本节点
+    包进中性 <span> 中，消除 tkinterweb 对裸文本渲染红框的伪影。
+    只处理 <pre>...</pre> 内部内容，不触碰外层 div 等标签。
+    """
+    def wrap_inner(pre_content: str) -> str:
+        """只对 pre 内部的裸文本做 span 包裹"""
+        parts = []
+        i = 0
+        while i < len(pre_content):
+            if pre_content[i:].startswith('<span'):
+                close = pre_content.find('</span>', i)
+                if close == -1:
+                    parts.append(pre_content[i:])
+                    break
+                end = close + len('</span>')
+                parts.append(pre_content[i:end])
+                i = end
+            else:
+                next_span = pre_content.find('<span', i)
+                if next_span == -1:
+                    text = pre_content[i:]
+                    if text.strip():
+                        parts.append(f'<span>{text}</span>')
+                    else:
+                        parts.append(text)
+                    break
+                text = pre_content[i:next_span]
+                if text.strip():
+                    parts.append(f'<span>{text}</span>')
+                else:
+                    parts.append(text)
+                i = next_span
+        return ''.join(parts)
+
+    # 仅替换 <pre>...</pre> 内部
+    return re.sub(
+        r'(<pre[^>]*>)(.*?)(</pre>)',
+        lambda m: m.group(1) + wrap_inner(m.group(2)) + m.group(3),
+        highlighted,
+        flags=re.DOTALL,
+    )
+
+
 def _highlight_code_blocks(html: str, theme: str = 'light') -> str:
     """
     用 Pygments 为 <pre><code> 块添加语法高亮
@@ -314,6 +359,9 @@ def _highlight_code_blocks(html: str, theme: str = 'light') -> str:
                 lexer = TextLexer()
 
             highlighted = highlight(code, lexer, formatter)
+            # tkinterweb 对 <pre> 内裸文本节点（如 { } 等未被 Pygments 包裹的字符）
+            # 会渲染出红框伪影；将所有裸文本包进中性 span 消除此问题
+            highlighted = _wrap_bare_text(highlighted)
             return highlighted
 
         # 匹配 <pre><code> 或 <pre><code class="language-xxx">
@@ -419,6 +467,12 @@ def _build_html_page(body: str, theme: str = 'light', katex: dict = None) -> str
     background: none;
     padding: 0;
     border-radius: 0;
+    border: none;
+    outline: none;
+  }}
+  pre span {{
+    border: none !important;
+    outline: none !important;
   }}
   table {{
     border-collapse: collapse;
