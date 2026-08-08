@@ -1,12 +1,18 @@
 """
-InfoLearn Desktop — 信息学竞赛学习桌面助手
+OI-Learn Desktop — 信息学竞赛学习桌面助手
 入口文件
 
 运行方式：
     python main.py
 
-打包命令（M9 阶段使用）：
-    pyinstaller --onefile --windowed --name InfoLearn --add-data "data;data" main.py
+打包命令：
+    pyinstaller OI-Learn.spec          # 使用 spec 文件（folder 模式，推荐）
+
+⚠️ 重要：切勿使用 --onefile 模式打包！
+   config.py 的 get_app_dir() 在 onefile 模式下会指向系统临时解压目录，
+   导致所有数据（数据库、配置、签到记录）写入临时目录、程序退出即丢失。
+   当前 OI-Learn.spec 使用 folder 模式（COLLECT），数据随 exe 同目录存储，
+   整个 dist/OI-Learn/ 文件夹可拷贝到 U 盘随身携带。
 """
 
 import sys
